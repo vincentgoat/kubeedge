@@ -85,7 +85,7 @@ const (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=cluster,shortName=ng
+// +kubebuilder:resource:scope=Cluster,shortName=ng
 
 // NodeGroup is the Schema for the nodegroups API
 type NodeGroup struct {
