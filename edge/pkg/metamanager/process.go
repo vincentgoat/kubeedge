@@ -472,6 +472,7 @@ func (m *metaManager) runMetaManager() {
 				klog.Errorf("get a message %+v: %v", msg, err)
 				continue
 			}
+			klog.Errorf("=====metamanager process msg: %v", msg)
 			klog.V(2).Infof("get a message %+v", msg)
 			m.process(msg)
 		}

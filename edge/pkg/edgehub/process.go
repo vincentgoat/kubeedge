@@ -65,9 +65,10 @@ func (*defaultHandler) Process(message *model.Message, clientHub clients.Adapter
 	case messagepkg.UserGroupName:
 		md = modules.BusGroup
 	}
-
+	klog.Errorf("=====edgehub process-1 msg %s msg: %v", md, *message)
 	isResponse := isSyncResponse(message.GetParentID())
 	if isResponse {
+		klog.Errorf("=====edgehub process isSyncResponse %s", message.GetParentID())
 		beehiveContext.SendResp(*message)
 		return nil
 	}
@@ -76,6 +77,7 @@ func (*defaultHandler) Process(message *model.Message, clientHub clients.Adapter
 	} else if group == messagepkg.UserGroupName && message.GetSource() == "router_servicebus" {
 		beehiveContext.Send(modules.ServiceBusModuleName, *message)
 	} else {
+		klog.Errorf("=====edgehub process msg %s msg: %v", md, *message)
 		beehiveContext.SendToGroup(md, *message)
 	}
 	return nil

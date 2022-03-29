@@ -17,6 +17,7 @@ limitations under the License.
 package dynamiccontroller
 
 import (
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/klog/v2"
 
@@ -79,7 +80,8 @@ func newDynamicController(enable bool) *DynamicController {
 		dynamicSharedInformerFactory: informers.GetInformersManager().GetDynamicSharedInformerFactory(),
 	}
 	dctl.applicationCenter = application.NewApplicationCenter(dctl.dynamicSharedInformerFactory)
-
+	dctl.applicationCenter.ForResource(v1.SchemeGroupVersion.WithResource("nodes"))
+	dctl.applicationCenter.ForResource(v1.SchemeGroupVersion.WithResource("services"))
 	return dctl
 }
 

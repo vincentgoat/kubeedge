@@ -25,8 +25,10 @@ const (
 	// ControllerName is the controller name that will be used when reporting events.
 	ControllerName = "nodegroup-controller"
 
-	LabelBelongingTo             = "groupmanagement.kubeedge.io/belonging-to"
-	NodeGroupControllerFinalizer = "groupmanagement.kubeedge.io/nodegroup-controller"
+	LabelBelongingTo              = "groupmanagement.kubeedge.io/belonging-to"
+	ServiceTopologyAnnotation     = "groupmanagement.kubeedge.io/service-topology"
+	ServiceTopologyRangeNodegroup = "groupmanagement.kubeedge.io/range-nodegroup"
+	NodeGroupControllerFinalizer  = "groupmanagement.kubeedge.io/nodegroup-controller"
 )
 
 var (

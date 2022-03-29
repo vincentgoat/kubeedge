@@ -459,6 +459,11 @@ func (c *Center) ProcessApplication(app *Application) (interface{}, error) {
 		if err != nil {
 			return nil, fmt.Errorf("successfully to add listener but failed to get current list, %v", err)
 		}
+
+		for _, obj := range list.Items {
+			klog.Errorf("====List app %v", obj)
+			filterEndpointSlice(&obj, app.Nodename)
+		}
 		return list, nil
 	case Watch:
 		var option = new(metav1.ListOptions)
@@ -478,6 +483,8 @@ func (c *Center) ProcessApplication(app *Application) (interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
+		klog.Errorf("====get app %v", retObj)
+		filterEndpointSlice(retObj, app.Nodename)
 		return retObj, nil
 	case Create:
 		var option = new(metav1.CreateOptions)
