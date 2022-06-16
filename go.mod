@@ -39,7 +39,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	golang.org/x/net v0.0.0-20211209124913-491a49abca63
-	google.golang.org/grpc v1.42.0
+	google.golang.org/grpc v1.47.0
 	helm.sh/helm/v3 v3.7.2
 	k8s.io/api v0.22.6
 	k8s.io/apiextensions-apiserver v0.22.6
