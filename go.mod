@@ -10,15 +10,14 @@ require (
 	github.com/cheekybits/genny v1.0.0 // indirect
 	github.com/container-storage-interface/spec v1.5.0
 	github.com/containerd/containerd v1.5.10 // indirect
-	github.com/docker/distribution v2.8.0+incompatible // indirect
-	github.com/docker/docker v20.10.2+incompatible
+	github.com/docker/docker v20.10.12+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/eclipse/paho.mqtt.golang v1.2.0
 	github.com/emicklei/go-restful v2.9.6+incompatible
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang/mock v1.5.0
 	github.com/golang/protobuf v1.5.2
-	github.com/google/cadvisor v0.39.3
+	github.com/google/cadvisor v0.44.1
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
@@ -30,7 +29,6 @@ require (
 	github.com/mitchellh/go-ps v0.0.0-20190716172923-621e5597135b
 	github.com/onsi/ginkgo v1.14.0
 	github.com/onsi/gomega v1.10.3
-	github.com/opencontainers/runc v1.0.3 // indirect
 	github.com/paypal/gatt v0.0.0-20151011220935-4ae819d591cf
 	github.com/prometheus/client_golang v1.11.0
 	github.com/shirou/gopsutil v2.21.11+incompatible
@@ -59,7 +57,7 @@ require (
 	k8s.io/kubelet v0.22.6
 	k8s.io/kubernetes v1.22.6
 	k8s.io/mount-utils v0.22.6
-	k8s.io/utils v0.0.0-20210819203725-bdf08cb9a70a
+	k8s.io/utils v0.0.0-20211116205334-6203023598ed
 	sigs.k8s.io/apiserver-network-proxy v0.0.27
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.27
 	sigs.k8s.io/yaml v1.2.0
