@@ -383,7 +383,7 @@ github.com/googleapis/gnostic/openapiv2
 # github.com/gorilla/mux v1.8.0
 ## explicit
 github.com/gorilla/mux
-# github.com/gorilla/websocket v1.4.2
+# github.com/gorilla/websocket v1.5.0
 ## explicit
 github.com/gorilla/websocket
 # github.com/gosuri/uitable v0.0.4
