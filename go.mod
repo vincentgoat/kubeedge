@@ -60,7 +60,7 @@ require (
 	k8s.io/kubernetes v1.22.6
 	k8s.io/mount-utils v0.22.6
 	k8s.io/utils v0.0.0-20210819203725-bdf08cb9a70a
-	sigs.k8s.io/apiserver-network-proxy v0.0.27
+	sigs.k8s.io/apiserver-network-proxy v0.0.31
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.27
 	sigs.k8s.io/yaml v1.2.0
 )

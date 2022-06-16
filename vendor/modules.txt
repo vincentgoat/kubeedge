@@ -1990,7 +1990,7 @@ oras.land/oras-go/pkg/auth/docker
 oras.land/oras-go/pkg/content
 oras.land/oras-go/pkg/context
 oras.land/oras-go/pkg/oras
-# sigs.k8s.io/apiserver-network-proxy v0.0.27
+# sigs.k8s.io/apiserver-network-proxy v0.0.31
 ## explicit
 sigs.k8s.io/apiserver-network-proxy/cmd/agent/app
 sigs.k8s.io/apiserver-network-proxy/cmd/agent/app/options
