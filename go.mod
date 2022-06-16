@@ -5,7 +5,7 @@ go 1.16
 require (
 	github.com/256dpi/gomqtt v0.10.4
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2 // indirect
-	github.com/astaxie/beego v1.12.0
+	github.com/astaxie/beego v1.12.3
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/cheekybits/genny v1.0.0 // indirect
 	github.com/container-storage-interface/spec v1.5.0
@@ -22,11 +22,10 @@ require (
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
-	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/kubeedge/beehive v0.0.0
 	github.com/kubeedge/viaduct v0.0.0
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/mattn/go-sqlite3 v1.14.9
+	github.com/mattn/go-sqlite3 v2.0.3+incompatible
 	github.com/mitchellh/go-ps v0.0.0-20190716172923-621e5597135b
 	github.com/onsi/ginkgo v1.14.0
 	github.com/onsi/gomega v1.10.3
