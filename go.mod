@@ -33,7 +33,7 @@ require (
 	github.com/opencontainers/runc v1.0.3 // indirect
 	github.com/paypal/gatt v0.0.0-20151011220935-4ae819d591cf
 	github.com/prometheus/client_golang v1.11.0
-	github.com/shirou/gopsutil v2.21.11+incompatible
+	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/spf13/cobra v1.2.1
 	github.com/spf13/pflag v1.0.5
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
