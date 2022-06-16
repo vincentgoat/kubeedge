@@ -28,7 +28,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/mattn/go-sqlite3 v1.14.9
 	github.com/mitchellh/go-ps v0.0.0-20190716172923-621e5597135b
-	github.com/onsi/ginkgo v1.14.0
+	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.10.3
 	github.com/opencontainers/runc v1.0.3 // indirect
 	github.com/paypal/gatt v0.0.0-20151011220935-4ae819d591cf
