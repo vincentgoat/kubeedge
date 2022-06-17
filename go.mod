@@ -32,36 +32,36 @@ require (
 	github.com/onsi/gomega v1.10.3
 	github.com/opencontainers/runc v1.0.3 // indirect
 	github.com/paypal/gatt v0.0.0-20151011220935-4ae819d591cf
-	github.com/prometheus/client_golang v1.11.0
+	github.com/prometheus/client_golang v1.12.1
 	github.com/shirou/gopsutil v2.21.11+incompatible
-	github.com/spf13/cobra v1.2.1
+	github.com/spf13/cobra v1.4.0
 	github.com/spf13/pflag v1.0.5
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	golang.org/x/net v0.0.0-20211209124913-491a49abca63
+	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd
 	google.golang.org/grpc v1.42.0
 	helm.sh/helm/v3 v3.7.2
-	k8s.io/api v0.22.6
+	k8s.io/api v0.24.2
 	k8s.io/apiextensions-apiserver v0.22.6
-	k8s.io/apimachinery v0.22.6
-	k8s.io/apiserver v0.22.6
+	k8s.io/apimachinery v0.24.2
+	k8s.io/apiserver v0.24.2
 	k8s.io/cli-runtime v0.22.6
-	k8s.io/client-go v0.22.6
-	k8s.io/cloud-provider v0.22.6
+	k8s.io/client-go v0.24.2
+	k8s.io/cloud-provider v0.24.2
 	k8s.io/cluster-bootstrap v0.22.6 // indirect
 	k8s.io/code-generator v0.22.6
-	k8s.io/component-base v0.22.6
+	k8s.io/component-base v0.24.2
 	k8s.io/cri-api v0.22.6
 	k8s.io/csi-translation-lib v0.22.6
-	k8s.io/klog/v2 v2.9.0
-	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
+	k8s.io/klog/v2 v2.60.1
+	k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9b0b42
 	k8s.io/kube-scheduler v0.22.6 // indirect
 	k8s.io/kubelet v0.22.6
 	k8s.io/kubernetes v1.22.6
 	k8s.io/mount-utils v0.22.6
-	k8s.io/utils v0.0.0-20210819203725-bdf08cb9a70a
+	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9
 	sigs.k8s.io/apiserver-network-proxy v0.0.27
-	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.27
+	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.30
 	sigs.k8s.io/yaml v1.2.0
 )
 
