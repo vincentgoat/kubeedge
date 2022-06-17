@@ -38,7 +38,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	golang.org/x/net v0.0.0-20211209124913-491a49abca63
+	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd
 	google.golang.org/grpc v1.42.0
 	helm.sh/helm/v3 v3.7.2
 	k8s.io/api v0.22.6
@@ -51,7 +51,7 @@ require (
 	k8s.io/cluster-bootstrap v0.22.6 // indirect
 	k8s.io/code-generator v0.22.6
 	k8s.io/component-base v0.22.6
-	k8s.io/cri-api v0.22.6
+	k8s.io/cri-api v0.24.2
 	k8s.io/csi-translation-lib v0.22.6
 	k8s.io/klog/v2 v2.9.0
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
