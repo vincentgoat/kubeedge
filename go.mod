@@ -53,13 +53,13 @@ require (
 	k8s.io/component-base v0.22.6
 	k8s.io/cri-api v0.22.6
 	k8s.io/csi-translation-lib v0.22.6
-	k8s.io/klog/v2 v2.9.0
+	k8s.io/klog/v2 v2.60.1
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
 	k8s.io/kube-scheduler v0.22.6 // indirect
 	k8s.io/kubelet v0.22.6
 	k8s.io/kubernetes v1.22.6
-	k8s.io/mount-utils v0.22.6
-	k8s.io/utils v0.0.0-20210819203725-bdf08cb9a70a
+	k8s.io/mount-utils v0.24.3
+	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9
 	sigs.k8s.io/apiserver-network-proxy v0.0.27
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.27
 	sigs.k8s.io/yaml v1.2.0
