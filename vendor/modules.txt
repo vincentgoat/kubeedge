@@ -891,7 +891,7 @@ google.golang.org/appengine/internal/log
 google.golang.org/appengine/internal/remote_api
 google.golang.org/appengine/internal/urlfetch
 google.golang.org/appengine/urlfetch
-# google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c
+# google.golang.org/genproto v0.0.0-20220107163113-42d7afdf6368
 google.golang.org/genproto/googleapis/api/annotations
 google.golang.org/genproto/googleapis/api/httpbody
 google.golang.org/genproto/googleapis/rpc/status
@@ -1602,9 +1602,10 @@ k8s.io/component-base/version
 k8s.io/component-helpers/scheduling/corev1
 k8s.io/component-helpers/scheduling/corev1/nodeaffinity
 k8s.io/component-helpers/storage/volume
-# k8s.io/cri-api v0.22.6
+# k8s.io/cri-api v0.24.3
 ## explicit
 k8s.io/cri-api/pkg/apis
+k8s.io/cri-api/pkg/apis/runtime/v1
 k8s.io/cri-api/pkg/apis/runtime/v1alpha2
 k8s.io/cri-api/pkg/apis/testing
 # k8s.io/csi-translation-lib v0.22.6

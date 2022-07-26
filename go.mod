@@ -52,7 +52,7 @@ require (
 	k8s.io/cluster-bootstrap v0.22.6 // indirect
 	k8s.io/code-generator v0.22.6
 	k8s.io/component-base v0.22.6
-	k8s.io/cri-api v0.22.6
+	k8s.io/cri-api v0.24.3
 	k8s.io/csi-translation-lib v0.22.6
 	k8s.io/klog/v2 v2.9.0
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
