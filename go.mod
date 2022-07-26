@@ -50,12 +50,12 @@ require (
 	k8s.io/client-go v0.22.6
 	k8s.io/cloud-provider v0.22.6
 	k8s.io/cluster-bootstrap v0.22.6 // indirect
-	k8s.io/code-generator v0.22.6
+	k8s.io/code-generator v0.24.3
 	k8s.io/component-base v0.22.6
 	k8s.io/cri-api v0.22.6
 	k8s.io/csi-translation-lib v0.22.6
-	k8s.io/klog/v2 v2.9.0
-	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
+	k8s.io/klog/v2 v2.60.1
+	k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9b0b42
 	k8s.io/kube-scheduler v0.22.6 // indirect
 	k8s.io/kubelet v0.22.6
 	k8s.io/kubernetes v1.22.6
