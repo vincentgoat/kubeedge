@@ -16,7 +16,7 @@ require (
 	github.com/docker/go-connections v0.4.0
 	github.com/eclipse/paho.mqtt.golang v1.2.0
 	github.com/emicklei/go-restful v2.9.6+incompatible
-	github.com/evanphx/json-patch v4.11.0+incompatible
+	github.com/evanphx/json-patch v4.12.0+incompatible
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang/mock v1.5.0
 	github.com/golang/protobuf v1.5.2
@@ -42,9 +42,9 @@ require (
 	golang.org/x/sys v0.0.0-20220704084225-05e143d24a9e // indirect
 	google.golang.org/grpc v1.42.0
 	helm.sh/helm/v3 v3.7.2
-	k8s.io/api v0.22.6
+	k8s.io/api v0.24.3
 	k8s.io/apiextensions-apiserver v0.22.6
-	k8s.io/apimachinery v0.22.6
+	k8s.io/apimachinery v0.24.3
 	k8s.io/apiserver v0.22.6
 	k8s.io/cli-runtime v0.22.6
 	k8s.io/client-go v0.22.6
@@ -54,13 +54,13 @@ require (
 	k8s.io/component-base v0.22.6
 	k8s.io/cri-api v0.22.6
 	k8s.io/csi-translation-lib v0.22.6
-	k8s.io/klog/v2 v2.9.0
-	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
+	k8s.io/klog/v2 v2.60.1
+	k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9b0b42
 	k8s.io/kube-scheduler v0.22.6 // indirect
 	k8s.io/kubelet v0.22.6
 	k8s.io/kubernetes v1.22.6
 	k8s.io/mount-utils v0.22.6
-	k8s.io/utils v0.0.0-20210819203725-bdf08cb9a70a
+	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9
 	sigs.k8s.io/apiserver-network-proxy v0.0.27
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.27
 	sigs.k8s.io/controller-runtime v0.10.3
