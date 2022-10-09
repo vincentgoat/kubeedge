@@ -10,6 +10,8 @@ jobs:
   release-assests:
     name: release kubeedge components
     runs-on: ubuntu-18.04
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
     strategy:
       matrix:
         target:
@@ -38,6 +40,14 @@ jobs:
         run: |
           docker pull kubeedge/build-tools
           make release ARM_VERSION=${{ matrix.ARM_VERSION }}
+      - name: Generate hashes
+        shell: bash
+        id: hash
+        run: |
+          # sha256sum generates sha256 hash for all artifacts.
+          # base64 -w0 encodes to base64 and outputs on a single line.
+          # sha256sum artifact1 artifact2 ... | base64 -w0
+          echo "::set-output name=hashes::$(sha256sum _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz | base64 -w0)"
       - name: Uploading assets...
         if: ${{ !env.ACT }}
         uses: softprops/action-gh-release@v1
@@ -45,6 +55,26 @@ jobs:
           files: |
             _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
             _output/release/${{ github.ref_name }}/checksum_${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz.txt
+      - name: Upload artifact
+        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8 # tag=v3.1.0
+        with:
+          name: ${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          path: _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 5
+  # This step calls the generic workflow to generate provenance.
+  provenance:
+    needs: [release-assests]
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.2.0
+    with:
+      base64-subjects: "${{ needs.release-assests.outputs.hashes }}"
+      # Upload provenance to a new release
+      upload-assets: true
+      compile-generator: true
 
   publish-image-to-dockerhub:
     name: publish to DockerHub
