@@ -18,10 +18,6 @@ jobs:
           - keadm
         os:
           - linux
-        arch:
-          - amd64
-          - arm64
-          - arm
         ARM_VERSION:
           - GOARM7
           - GOARM8
@@ -37,14 +33,68 @@ jobs:
       - name: Making and packaging
         run: |
           docker pull kubeedge/build-tools
-          make release ARM_VERSION=${{ matrix.ARM_VERSION }}
+          make release WHAT=${{ matrix.target }} ARM_VERSION=${{ matrix.ARM_VERSION }}
+      - name: Generate arch
+        run: |
+          if [ "${{ matrix.ARM_VERSION }}" = "GOARM7" ]; then echo "output_arch=arm" >> $GITHUB_ENV; elif [ ${{ matrix.ARM_VERSION }} = "GOARM8" ]; then echo "output_arch=arm64" >> $GITHUB_ENV; else echo "output_arch=amd64" >> $GITHUB_ENV; fi
+      - name: Generate hashes
+        shell: bash
+        id: hash
+        run: |
+          cp _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.tar.gz .
+          sha256sum ${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch}}.tar.gz >> SHA256SUM-${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.md
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.tar.gz
+          path: _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 5
+      - name: Upload SHA256SUM
+        uses: actions/upload-artifact@v3
+        with:
+          name: SHA256SUM-${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.md
+          path: SHA256SUM-${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.md
+          if-no-files-found: error
+          retention-days: 5
       - name: Uploading assets...
         if: ${{ !env.ACT }}
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
-            _output/release/${{ github.ref_name }}/checksum_${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz.txt
+            _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.tar.gz
+            _output/release/${{ github.ref_name }}/checksum_${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.tar.gz.txt
+
+  build-hash:
+    name: build base64 subjects for provenance
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
+    runs-on: ubuntu-18.04
+    needs: [release-assests]
+    steps:
+      # Download all artifacts to specify working directory
+      - uses: actions/download-artifact@v3
+        with:
+          path: ${{ github.workspace }}/slsa/artifacts
+      - name: build hash
+        id: hash
+        run: |
+          cp  `find ${{ github.workspace }}/slsa/artifacts -mindepth 2 -type f` .
+          cat SHA256SUM-*.md >> SHA256SUM.md
+          echo "::set-output name=hashes::$(cat SHA256SUM.md | base64 -w0)"
+
+  # This step calls the generic workflow to generate provenance.
+  provenance:
+    needs: [build-hash]
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.2.1
+    with:
+      base64-subjects: "${{ needs.build-hash.outputs.hashes }}"
+      # Upload provenance to a new release
+      upload-assets: true
 
   publish-image-to-dockerhub:
     name: publish to DockerHub
