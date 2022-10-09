@@ -13,18 +13,18 @@ jobs:
     strategy:
       matrix:
         target:
-          - kubeedge
+          # - kubeedge
           - edgesite
           - keadm
         os:
           - linux
         arch:
           - amd64
-          - arm64
-          - arm
+          #- arm64
+          #- arm
         ARM_VERSION:
           - GOARM7
-          - GOARM8
+          #- GOARM8
           - ""
     steps:
       - name: checkout code
@@ -38,6 +38,24 @@ jobs:
         run: |
           docker pull kubeedge/build-tools
           make release ARM_VERSION=${{ matrix.ARM_VERSION }}
+          echo ${{ env.ACT }}
+          echo "=======test"
+      - name: Generate hashes
+        shell: bash
+        id: hash
+        run: |
+          # sha256sum generates sha256 hash for all artifacts.
+          # base64 -w0 encodes to base64 and outputs on a single line.
+          # sha256sum artifact1 artifact2 ... | base64 -w0
+          # echo "::set-output name=hashes::$(sha256sum _output/release/${{ github.ref_name }}/*.tar.gz | base64 -w0)"
+          sha256sum _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz >> ${{ github.workspace }}/SHA256SUM.md
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}
+          path: _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 5
       - name: Uploading assets...
         if: ${{ !env.ACT }}
         uses: softprops/action-gh-release@v1
@@ -45,6 +63,34 @@ jobs:
           files: |
             _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
             _output/release/${{ github.ref_name }}/checksum_${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz.txt
+
+  build-hash:
+    name: generic build hash
+    needs: [release-assests]
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Generate hashes
+        shell: bash
+        id: hash
+        run: |
+          # sha256sum generates sha256 hash for all artifacts.
+          # base64 -w0 encodes to base64 and outputs on a single line.
+          # sha256sum artifact1 artifact2 ... | base64 -w0
+          echo "slsa_hashes=`cat ${{ github.workspace }}/SHA256SUM.md | base64 -w0`" >> $GITHUB_ENV
+          echo "=======test hash" $slsa_hashes
+  # This step calls the generic workflow to generate provenance.
+  provenance:
+    needs: [build-hash]
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.2.0
+    with:
+      base64-subjects: "${{ env.slsa_hashes }}"
+      # Upload provenance to a new release
+      upload-assets: true
+      compile-generator: true
 
   publish-image-to-dockerhub:
     name: publish to DockerHub
