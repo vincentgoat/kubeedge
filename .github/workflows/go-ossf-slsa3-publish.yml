@@ -15,7 +15,7 @@ name: SLSA Go releaser
 on:
   workflow_call:
     inputs:
-      compile-generator:
+      compile-builder:
         type: boolean
         required: true
   workflow_dispatch:
