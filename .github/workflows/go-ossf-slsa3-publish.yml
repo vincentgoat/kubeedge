@@ -32,15 +32,8 @@ jobs:
     uses: slsa-framework/slsa-github-generator/.github/workflows/builder_go_slsa3.yml@v1.2.0
     with:
       go-version: 1.17
+      compile-builder: true
       # =============================================================================================================
       #     Optional: For more options, see https://github.com/slsa-framework/slsa-github-generator#golang-projects
       # =============================================================================================================
-  provenance:
-    needs: [build]
-    permissions:
-      id-token: write # For signing.
-      contents: write # For asset uploads.
-      actions: read # For the entrypoint.
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@main
-    with:
-      compile-generator: true
+
