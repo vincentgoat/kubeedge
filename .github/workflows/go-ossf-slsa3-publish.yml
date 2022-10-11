@@ -13,11 +13,6 @@
 
 name: SLSA Go releaser
 on:
-  workflow_call:
-    inputs:
-      compile-builder:
-        type: boolean
-        required: true
   workflow_dispatch:
   release:
     types: [created]
@@ -40,4 +35,12 @@ jobs:
       # =============================================================================================================
       #     Optional: For more options, see https://github.com/slsa-framework/slsa-github-generator#golang-projects
       # =============================================================================================================
-
+  provenance:
+    needs: [build]
+    permissions:
+      id-token: write # For signing.
+      contents: write # For asset uploads.
+      actions: read # For the entrypoint.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@main
+    with:
+      compile-generator: true
