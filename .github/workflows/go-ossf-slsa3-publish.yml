@@ -13,6 +13,11 @@
 
 name: SLSA Go releaser
 on:
+  workflow_call:
+    inputs:
+      compile-generator:
+        type: boolean
+        required: true
   workflow_dispatch:
   release:
     types: [created]
