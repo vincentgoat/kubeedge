@@ -114,7 +114,7 @@ test:
 	@echo "$$TEST_HELP_INFO"
 else ifeq ($(PROFILE),y)
 test: clean
-	PROFILE=coverage.out hack/make-rules/test.sh $(WHAT)
+	PROFILE=coverage.txt hack/make-rules/test.sh $(WHAT)
 else
 test: clean
 	hack/make-rules/test.sh $(WHAT)

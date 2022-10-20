@@ -6,6 +6,7 @@ on:
       - master
     tags:
   pull_request:
+  workflow_dispatch:
 
 env:
   CONTAINER_RUN_OPTIONS: " "
@@ -129,6 +130,9 @@ jobs:
       - run: make test
 
       - run: make integrationtest
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
 
   e2e_test:
     runs-on: ubuntu-18.04
