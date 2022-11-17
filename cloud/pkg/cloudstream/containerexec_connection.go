@@ -21,6 +21,7 @@ type ContainerExecConnection struct {
 	Conn         net.Conn
 	session      *Session
 	edgePeerStop chan struct{}
+	closeChan    chan bool
 }
 
 func (c *ContainerExecConnection) String() string {
@@ -40,10 +41,15 @@ func (c *ContainerExecConnection) GetMessageID() uint64 {
 }
 
 func (c *ContainerExecConnection) SetEdgePeerDone() {
-	close(c.edgePeerStop)
+	select {
+	case <-c.closeChan:
+		return
+	default:
+		c.edgePeerStop <- struct{}{}
+	}
 }
 
-func (c *ContainerExecConnection) EdgePeerDone() <-chan struct{} {
+func (c *ContainerExecConnection) EdgePeerDone() chan struct{} {
 	return c.edgePeerStop
 }
 
@@ -73,6 +79,7 @@ func (c *ContainerExecConnection) SendConnection() (stream.EdgedConnection, erro
 
 func (c *ContainerExecConnection) Serve() error {
 	defer func() {
+		close(c.closeChan)
 		klog.V(6).Infof("%s stop successfully", c.String())
 	}()
 
@@ -102,8 +109,8 @@ func (c *ContainerExecConnection) Serve() error {
 			sendCloseMessage()
 			return nil
 		case <-c.EdgePeerDone():
-			err = fmt.Errorf("%s find edge peer done, so stop this connection", c.String())
-			return err
+			klog.V(6).Infof("%s find edge peer done, so stop this connection", c.String())
+			return fmt.Errorf("%s find edge peer done, so stop this connection", c.String())
 		default:
 		}
 		for {
