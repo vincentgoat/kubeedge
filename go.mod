@@ -25,7 +25,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/kubeedge/beehive v0.0.0
 	github.com/kubeedge/viaduct v0.0.0
-	github.com/kubernetes-csi/csi-lib-utils v0.6.1
+	github.com/kubernetes-csi/csi-lib-utils v0.11.0
 	github.com/mattn/go-sqlite3 v1.14.9
 	github.com/mitchellh/go-ps v0.0.0-20190716172923-621e5597135b
 	github.com/onsi/ginkgo/v2 v2.1.4
