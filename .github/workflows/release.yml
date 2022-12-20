@@ -86,15 +86,15 @@ jobs:
     strategy:
       matrix:
         target:
-          - cloudcore
+          #- cloudcore
           - admission
-          - edgesite-agent
-          - edgesite-server
-          - csidriver
-          - iptablesmanager
-          - edgemark
-          - installation-package
-          - controllermanager
+          #- edgesite-agent
+          #- edgesite-server
+          #- csidriver
+          #- iptablesmanager
+          #- edgemark
+          #- installation-package
+          #- controllermanager
     runs-on: ubuntu-22.04
     steps:
       - name: checkout code
@@ -114,6 +114,19 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USER_NAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: build and publish images
-        env:
-          IMAGE_REPO_NAME: kubeedge
-        run: make crossbuildimage WHAT=${{ matrix.target }}
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          file: build/${{ matrix.target }}/Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: |
+            kubeedge/${{ matrix.target }}:${{ github.ref_name }}
+      - name: echo digest
+        run: |
+          echo "kubeedge/${{ matrix.target }}:${{ github.ref_name }}" >> digest.txt
+          echo ${digest} >> digest.txt
+          cat digest.txt
+        #env:
+        #  IMAGE_REPO_NAME: kubeedge
+        #run: make crossbuildimage WHAT=${{ matrix.target }}
