@@ -9,12 +9,19 @@ env:
 jobs:
   release-assests:
     name: release kubeedge components
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-18.04
     strategy:
       matrix:
-        target: ["kubeedge","edgesite","keadm"]
-        os: ["linux"]
-        ARM_VERSION: ["GOARM7","GOARM8",""]
+        target:
+          - kubeedge
+          - edgesite
+          - keadm
+        os:
+          - linux
+        ARM_VERSION:
+          - GOARM7
+          - GOARM8
+          - ""
     outputs:
       kubeedge-amd64: ${{ steps.hash.outputs.hash-kubeedge-amd64 }}
       kubeedge-arm64: ${{ steps.hash.outputs.hash-kubeedge-arm64 }}
@@ -86,16 +93,16 @@ jobs:
     strategy:
       matrix:
         target:
-          - cloudcore
+          #- cloudcore
           - admission
-          - edgesite-agent
-          - edgesite-server
-          - csidriver
-          - iptablesmanager
-          - edgemark
-          - installation-package
-          - controllermanager
-    runs-on: ubuntu-22.04
+          #- edgesite-agent
+          #- edgesite-server
+          #- csidriver
+          #- iptablesmanager
+          #- edgemark
+          #- installation-package
+          #- controllermanager
+    runs-on: ubuntu-18.04
     steps:
       - name: checkout code
         uses: actions/checkout@v3
@@ -114,6 +121,19 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USER_NAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: build and publish images
-        env:
-          IMAGE_REPO_NAME: kubeedge
-        run: make crossbuildimage WHAT=${{ matrix.target }}
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          file: build/${{ matrix.target }}/Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: |
+            kubeedge/${{ matrix.target }}:${{ github.ref_name }}
+      - name: echo digest
+        run: |
+          echo "kubeedge/${{ matrix.target }}:${{ github.ref_name }}" >> digest.txt
+          echo ${digest} >> digest.txt
+          cat digest.txt
+        #env:
+        #  IMAGE_REPO_NAME: kubeedge
+        #run: make crossbuildimage WHAT=${{ matrix.target }}
