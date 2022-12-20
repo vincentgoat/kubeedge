@@ -1,7 +1,6 @@
 package packet
 
 import (
-	"encoding/binary"
 	"fmt"
 	"strings"
 )
@@ -23,74 +22,76 @@ func NewSuback() *Suback {
 }
 
 // Type returns the packets type.
-func (sp *Suback) Type() Type {
+func (s *Suback) Type() Type {
 	return SUBACK
 }
 
 // String returns a string representation of the packet.
-func (sp *Suback) String() string {
+func (s *Suback) String() string {
 	var codes []string
 
-	for _, c := range sp.ReturnCodes {
+	for _, c := range s.ReturnCodes {
 		codes = append(codes, fmt.Sprintf("%d", c))
 	}
 
 	return fmt.Sprintf("<Suback ID=%d ReturnCodes=[%s]>",
-		sp.ID, strings.Join(codes, ", "))
+		s.ID, strings.Join(codes, ", "))
 }
 
 // Len returns the byte length of the encoded packet.
-func (sp *Suback) Len() int {
-	ml := sp.len()
+func (s *Suback) Len() int {
+	ml := s.len()
 	return headerLen(ml) + ml
 }
 
 // Decode reads from the byte slice argument. It returns the total number of
 // bytes decoded, and whether there have been any errors during the process.
-func (sp *Suback) Decode(src []byte) (int, error) {
-	total := 0
-
+func (s *Suback) Decode(src []byte) (int, error) {
 	// decode header
-	hl, _, rl, err := headerDecode(src[total:], SUBACK)
-	total += hl
+	total, _, rl, err := decodeHeader(src, SUBACK)
 	if err != nil {
 		return total, err
 	}
 
-	// check buffer length
-	if len(src) < total+2 {
-		return total, makeError(sp.Type(), "insufficient buffer size, expected %d, got %d", total+2, len(src))
-	}
-
-	// check remaining length
-	if rl <= 2 {
-		return total, makeError(sp.Type(), "expected remaining length to be greater than 2, got %d", rl)
-	}
-
 	// read packet id
-	sp.ID = ID(binary.BigEndian.Uint16(src[total:]))
-	total += 2
+	pid, n, err := readUint(src[total:], 2, SUBACK)
+	total += n
+	if err != nil {
+		return total, err
+	}
 
-	// check packet id
-	if !sp.ID.Valid() {
-		return total, makeError(sp.Type(), "packet id must be grater than zero")
+	// set packet id
+	s.ID = ID(pid)
+	if !s.ID.Valid() {
+		return total, makeError(SUBACK, "packet id must be grater than zero")
 	}
 
 	// calculate number of return codes
-	rcl := int(rl) - 2
+	rcl := rl - 2
+	if rcl < 1 {
+		return total, makeError(SUBACK, "expected at least one return code")
+	}
+
+	// prepare return codes
+	s.ReturnCodes = make([]QOS, 0, rcl)
 
 	// read return codes
-	sp.ReturnCodes = make([]QOS, rcl)
-	for i, rc := range src[total : total+rcl] {
-		sp.ReturnCodes[i] = QOS(rc)
-	}
-	total += len(sp.ReturnCodes)
-
-	// validate return codes
-	for i, code := range sp.ReturnCodes {
-		if !code.Successful() && code != QOSFailure {
-			return total, makeError(sp.Type(), "invalid return code %d for topic %d", code, i)
+	for i := 0; i < rcl; i++ {
+		// read return code
+		rc, n, err := readUint8(src[total:], SUBACK)
+		total += n
+		if err != nil {
+			return total, err
 		}
+
+		// get return code
+		returnCode := QOS(rc)
+		if !returnCode.Successful() && returnCode != QOSFailure {
+			return total, makeError(SUBACK, "invalid return code %d", returnCode)
+		}
+
+		// add return code
+		s.ReturnCodes = append(s.ReturnCodes, returnCode)
 	}
 
 	return total, nil
@@ -99,42 +100,43 @@ func (sp *Suback) Decode(src []byte) (int, error) {
 // Encode writes the packet bytes into the byte slice from the argument. It
 // returns the number of bytes encoded and whether there's any errors along
 // the way. If there is an error, the byte slice should be considered invalid.
-func (sp *Suback) Encode(dst []byte) (int, error) {
-	total := 0
-
-	// check return codes
-	for i, code := range sp.ReturnCodes {
-		if !code.Successful() && code != QOSFailure {
-			return total, makeError(sp.Type(), "invalid return code %d for topic %d", code, i)
-		}
+func (s *Suback) Encode(dst []byte) (int, error) {
+	// encode header
+	total, err := encodeHeader(dst, 0, s.len(), s.Len(), SUBACK)
+	if err != nil {
+		return total, err
 	}
 
 	// check packet id
-	if !sp.ID.Valid() {
-		return total, makeError(sp.Type(), "packet id must be grater than zero")
+	if !s.ID.Valid() {
+		return 0, makeError(SUBACK, "packet id must be grater than zero")
 	}
 
-	// encode header
-	n, err := headerEncode(dst[total:], 0, sp.len(), sp.Len(), SUBACK)
+	// write packet id
+	n, err := writeUint(dst[total:], uint64(s.ID), 2, SUBACK)
 	total += n
 	if err != nil {
 		return total, err
 	}
 
-	// write packet id
-	binary.BigEndian.PutUint16(dst[total:], uint16(sp.ID))
-	total += 2
-
 	// write return codes
-	for i, rc := range sp.ReturnCodes {
-		dst[total+i] = byte(rc)
+	for _, rc := range s.ReturnCodes {
+		// check return code
+		if !rc.Successful() && rc != QOSFailure {
+			return 0, makeError(SUBACK, "invalid return code %d", rc)
+		}
+
+		// write return code
+		n, err := writeUint8(dst[total:], uint8(rc), SUBACK)
+		total += n
+		if err != nil {
+			return total, err
+		}
 	}
-	total += len(sp.ReturnCodes)
 
 	return total, nil
 }
 
-// Returns the payload length.
-func (sp *Suback) len() int {
-	return 2 + len(sp.ReturnCodes)
+func (s *Suback) len() int {
+	return 2 + len(s.ReturnCodes)
 }

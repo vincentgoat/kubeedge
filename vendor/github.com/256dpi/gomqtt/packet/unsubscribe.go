@@ -1,7 +1,6 @@
 package packet
 
 import (
-	"encoding/binary"
 	"fmt"
 	"strings"
 )
@@ -21,78 +20,72 @@ func NewUnsubscribe() *Unsubscribe {
 }
 
 // Type returns the packets type.
-func (up *Unsubscribe) Type() Type {
+func (u *Unsubscribe) Type() Type {
 	return UNSUBSCRIBE
 }
 
 // String returns a string representation of the packet.
-func (up *Unsubscribe) String() string {
+func (u *Unsubscribe) String() string {
+	// collect topics
 	var topics []string
-
-	for _, t := range up.Topics {
+	for _, t := range u.Topics {
 		topics = append(topics, fmt.Sprintf("%q", t))
 	}
 
-	return fmt.Sprintf("<Unsubscribe Topics=[%s]>",
-		strings.Join(topics, ", "))
+	return fmt.Sprintf("<Unsubscribe Topics=[%s]>", strings.Join(topics, ", "))
 }
 
 // Len returns the byte length of the encoded packet.
-func (up *Unsubscribe) Len() int {
-	ml := up.len()
+func (u *Unsubscribe) Len() int {
+	ml := u.len()
 	return headerLen(ml) + ml
 }
 
 // Decode reads from the byte slice argument. It returns the total number of
 // bytes decoded, and whether there have been any errors during the process.
-func (up *Unsubscribe) Decode(src []byte) (int, error) {
-	total := 0
-
+func (u *Unsubscribe) Decode(src []byte) (int, error) {
 	// decode header
-	hl, _, rl, err := headerDecode(src[total:], UNSUBSCRIBE)
-	total += hl
+	total, _, rl, err := decodeHeader(src, UNSUBSCRIBE)
 	if err != nil {
 		return total, err
 	}
 
-	// check buffer length
-	if len(src) < total+2 {
-		return total, makeError(up.Type(), "insufficient buffer size, expected %d, got %d", total+2, len(src))
-	}
-
 	// read packet id
-	up.ID = ID(binary.BigEndian.Uint16(src[total:]))
-	total += 2
-
-	// check packet id
-	if !up.ID.Valid() {
-		return total, makeError(up.Type(), "packet id must be grater than zero")
+	pid, n, err := readUint(src[total:], 2, UNSUBSCRIBE)
+	total += n
+	if err != nil {
+		return total, err
 	}
 
-	// prepare counter
-	tl := int(rl) - 2
+	// set packet id
+	u.ID = ID(pid)
+	if !u.ID.Valid() {
+		return total, makeError(UNSUBSCRIBE, "packet id must be grater than zero")
+	}
 
 	// reset topics
-	up.Topics = up.Topics[:0]
+	u.Topics = u.Topics[:0]
 
+	// read topics
+	tl := rl - 2
 	for tl > 0 {
 		// read topic
-		t, n, err := readLPString(src[total:], up.Type())
+		topic, n, err := readLPString(src[total:], UNSUBSCRIBE)
 		total += n
 		if err != nil {
 			return total, err
 		}
 
 		// append to list
-		up.Topics = append(up.Topics, t)
+		u.Topics = append(u.Topics, topic)
 
 		// decrement counter
-		tl = tl - n - 1
+		tl -= n
 	}
 
 	// check for empty list
-	if len(up.Topics) == 0 {
-		return total, makeError(up.Type(), "empty topic list")
+	if len(u.Topics) == 0 {
+		return total, makeError(UNSUBSCRIBE, "empty topic list")
 	}
 
 	return total, nil
@@ -101,28 +94,29 @@ func (up *Unsubscribe) Decode(src []byte) (int, error) {
 // Encode writes the packet bytes into the byte slice from the argument. It
 // returns the number of bytes encoded and whether there's any errors along
 // the way. If there is an error, the byte slice should be considered invalid.
-func (up *Unsubscribe) Encode(dst []byte) (int, error) {
-	total := 0
-
-	// check packet id
-	if !up.ID.Valid() {
-		return total, makeError(up.Type(), "packet id must be grater than zero")
+func (u *Unsubscribe) Encode(dst []byte) (int, error) {
+	// encode header
+	total, err := encodeHeader(dst, 0, u.len(), u.Len(), UNSUBSCRIBE)
+	if err != nil {
+		return total, err
 	}
 
-	// encode header
-	n, err := headerEncode(dst[total:], 0, up.len(), up.Len(), UNSUBSCRIBE)
+	// check packet id
+	if !u.ID.Valid() {
+		return 0, makeError(UNSUBSCRIBE, "packet id must be grater than zero")
+	}
+
+	// write packet id
+	n, err := writeUint(dst[total:], uint64(u.ID), 2, UNSUBSCRIBE)
 	total += n
 	if err != nil {
 		return total, err
 	}
 
-	// write packet id
-	binary.BigEndian.PutUint16(dst[total:], uint16(up.ID))
-	total += 2
-
-	for _, t := range up.Topics {
+	// write topics
+	for _, topic := range u.Topics {
 		// write topic
-		n, err := writeLPString(dst[total:], t, up.Type())
+		n, err := writeLPString(dst[total:], topic, UNSUBSCRIBE)
 		total += n
 		if err != nil {
 			return total, err
@@ -132,12 +126,12 @@ func (up *Unsubscribe) Encode(dst []byte) (int, error) {
 	return total, nil
 }
 
-// Returns the payload length.
-func (up *Unsubscribe) len() int {
+func (u *Unsubscribe) len() int {
 	// packet ID
 	total := 2
 
-	for _, t := range up.Topics {
+	// add topics
+	for _, t := range u.Topics {
 		total += 2 + len(t)
 	}
 

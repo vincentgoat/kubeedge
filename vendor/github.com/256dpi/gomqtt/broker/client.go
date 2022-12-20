@@ -2,6 +2,7 @@ package broker
 
 import (
 	"errors"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -69,7 +70,7 @@ type Session interface {
 	LookupPacket(session.Direction, packet.ID) (packet.Generic, error)
 
 	// DeletePacket should remove a packet from the session. The method should
-	// not return an error if no packet with the specified id does exists.
+	// not return an error if no packet with the specified id does exist.
 	DeletePacket(session.Direction, packet.ID) error
 
 	// AllPackets should return all packets currently saved in the session.
@@ -96,7 +97,7 @@ type Backend interface {
 	// backend should also close any existing clients that use the same id.
 	//
 	// Note: In this call the Backend may also allocate other resources and
-	// setup the client for further usage as the broker will acknowledge the
+	// set up the client for further usage as the broker will acknowledge the
 	// connection when the call returns. The Terminate function is called for
 	// every client that Setup has been called for.
 	Setup(client *Client, id string, clean bool) (a Session, resumed bool, err error)
@@ -129,9 +130,9 @@ type Backend interface {
 	Unsubscribe(client *Client, topics []string, ack Ack) error
 
 	// Publish should forward the passed message to all other clients that hold
-	// a subscription that matches the messages topic. It should also add the
+	// a subscription that matches the message's topic. It should also add the
 	// message to all sessions that have a matching offline subscription. The
-	// later may only apply to messages with a QOS greater than 0. If an Ack is
+	// later may only apply to message's with a QOS greater than 0. If an Ack is
 	// provided, the message will be acknowledged when called during or after
 	// the call to Publish.
 	//
@@ -157,7 +158,7 @@ type Backend interface {
 	// unsubscribe the passed client from all previously subscribed topics. The
 	// backend may also convert a clients subscriptions to offline subscriptions.
 	//
-	// Note: The Backend may also cleanup previously allocated resources for
+	// Note: The Backend may also clean up previously allocated resources for
 	// that client as the broker will close the connection when the call
 	// returns.
 	Terminate(client *Client) error
@@ -193,9 +194,18 @@ const (
 
 // A Client represents a remote client that is connected to the broker.
 type Client struct {
+	state uint32
+
+	// MaximumKeepAlive may be set during Setup to enforce a maximum keep alive
+	// for this client. Missing or higher intervals will be set to the specified
+	// value.
+	//
+	// Will default to 5 minutes.
+	MaximumKeepAlive time.Duration
+
 	// ParallelPublishes may be set during Setup to control the number of
 	// parallel calls to Publish a client can perform. This setting also has an
-	// effect on how many incoming packets are stored in the clients session.
+	// effect on how many incoming packets are stored in the client's session.
 	//
 	// Will default to 10.
 	ParallelPublishes int
@@ -208,7 +218,7 @@ type Client struct {
 
 	// InflightMessages may be set during Setup to control the number of
 	// inflight messages from the broker to the client. This also defines how
-	// many outgoing packets are stored in the clients session.
+	// many outgoing packets are stored in the client's session.
 	//
 	// Will default to 10.
 	InflightMessages int
@@ -225,22 +235,20 @@ type Client struct {
 	// Disconnect packets are not provided to the callback.
 	PacketCallback func(packet.Generic) error
 
-	state   uint32
-	backend Backend
-	conn    transport.Conn
+	// Ref can be used by the backend to attach a custom object to the client.
+	Ref interface{}
 
-	id      string
-	will    *packet.Message
-	session Session
-
-	ackQueue chan packet.Generic
-
+	backend         Backend
+	conn            transport.Conn
+	id              string
+	will            *packet.Message
+	session         Session
+	ackQueue        chan packet.Generic
 	publishTokens   chan struct{}
 	subscribeTokens chan struct{}
 	dequeueTokens   chan struct{}
-
-	tomb tomb.Tomb
-	done chan struct{}
+	tomb            tomb.Tomb
+	closed          chan struct{}
 }
 
 // NewClient takes over a connection and returns a Client.
@@ -250,7 +258,7 @@ func NewClient(backend Backend, conn transport.Conn) *Client {
 		state:   clientConnecting,
 		backend: backend,
 		conn:    conn,
-		done:    make(chan struct{}),
+		closed:  make(chan struct{}),
 	}
 
 	// start processor
@@ -259,11 +267,11 @@ func NewClient(backend Backend, conn transport.Conn) *Client {
 	// run cleanup goroutine
 	go func() {
 		// wait for death and cleanup
-		c.tomb.Wait()
+		_ = c.tomb.Wait()
 		c.cleanup()
 
 		// close channel
-		close(c.done)
+		close(c.closed)
 	}()
 
 	return c
@@ -287,8 +295,8 @@ func (c *Client) Conn() transport.Conn {
 
 // Close will immediately close the client.
 func (c *Client) Close() {
+	_ = c.conn.Close()
 	c.tomb.Kill(ErrClientClosed)
-	c.conn.Close()
 }
 
 // Closing returns a channel that is closed when the client is closing.
@@ -298,7 +306,7 @@ func (c *Client) Closing() <-chan struct{} {
 
 // Closed returns a channel that is closed when the client is closed.
 func (c *Client) Closed() <-chan struct{} {
-	return c.done
+	return c.closed
 }
 
 /* goroutines */
@@ -364,14 +372,19 @@ func (c *Client) processor() error {
 // message dequeuer
 func (c *Client) dequeuer() error {
 	for {
-		// acquire dequeue token
+		// acquire dequeue token, try fast path first
 		select {
 		case <-c.dequeueTokens:
 			// continue
-		case <-time.After(c.TokenTimeout):
-			return c.die(ClientError, ErrTokenTimeout)
-		case <-c.tomb.Dying():
-			return tomb.ErrDying
+		default:
+			select {
+			case <-c.dequeueTokens:
+				// continue
+			case <-time.After(c.TokenTimeout):
+				return c.die(ClientError, ErrTokenTimeout)
+			case <-c.tomb.Dying():
+				return tomb.ErrDying
+			}
 		}
 
 		// request next message
@@ -435,7 +448,7 @@ func (c *Client) acker() error {
 			// send packet
 			err := c.send(pkt, true)
 			if err != nil {
-				return err // error already handled
+				return c.die(TransportError, err)
 			}
 
 			// remove publish from session if pubcomp
@@ -503,13 +516,6 @@ func (c *Client) processConnect(pkt *packet.Connect) error {
 	// set state
 	atomic.StoreUint32(&c.state, clientConnected)
 
-	// set keep alive
-	if pkt.KeepAlive > 0 {
-		c.conn.SetReadTimeout(time.Duration(pkt.KeepAlive) * 1500 * time.Millisecond)
-	} else {
-		c.conn.SetReadTimeout(0)
-	}
-
 	// retrieve session
 	s, resumed, err := c.backend.Setup(c, pkt.ClientID, pkt.CleanSession)
 	if err != nil {
@@ -517,6 +523,22 @@ func (c *Client) processConnect(pkt *packet.Connect) error {
 	} else if s == nil {
 		return c.die(BackendError, ErrMissingSession)
 	}
+
+	// set default maximum keep alive
+	if c.MaximumKeepAlive <= 0 {
+		c.MaximumKeepAlive = 5 * time.Minute
+	}
+
+	// get requested keep alive
+	requestedKeepAlive := time.Duration(pkt.KeepAlive) * time.Second
+
+	// enforce maximum keep alive
+	if requestedKeepAlive == 0 || requestedKeepAlive > c.MaximumKeepAlive {
+		requestedKeepAlive = c.MaximumKeepAlive
+	}
+
+	// set read timeout based on keep alive and grant 50% grace period
+	c.conn.SetReadTimeout(requestedKeepAlive + time.Duration(float64(requestedKeepAlive)*0.5))
 
 	// set session present
 	connack.SessionPresent = !pkt.CleanSession && resumed
@@ -663,14 +685,19 @@ func (c *Client) processPingreq() error {
 
 // handle an incoming subscribe packet
 func (c *Client) processSubscribe(pkt *packet.Subscribe) error {
-	// acquire subscribe token
+	// acquire subscribe token, try fast path first
 	select {
 	case <-c.subscribeTokens:
 		// continue
-	case <-time.After(c.TokenTimeout):
-		return c.die(ClientError, ErrTokenTimeout)
-	case <-c.tomb.Dying():
-		return tomb.ErrDying
+	default:
+		select {
+		case <-c.subscribeTokens:
+			// continue
+		case <-time.After(c.TokenTimeout):
+			return c.die(ClientError, ErrTokenTimeout)
+		case <-c.tomb.Dying():
+			return tomb.ErrDying
+		}
 	}
 
 	// prepare suback packet
@@ -683,13 +710,19 @@ func (c *Client) processSubscribe(pkt *packet.Subscribe) error {
 		suback.ReturnCodes[i] = subscription.QOS
 	}
 
+	// prepare ack
+	var once sync.Once
+	ack := func() {
+		once.Do(func() {
+			select {
+			case c.ackQueue <- suback:
+			case <-c.tomb.Dying():
+			}
+		})
+	}
+
 	// subscribe client to queue
-	err := c.backend.Subscribe(c, pkt.Subscriptions, func() {
-		select {
-		case c.ackQueue <- suback:
-		case <-c.tomb.Dying():
-		}
-	})
+	err := c.backend.Subscribe(c, pkt.Subscriptions, ack)
 	if err != nil {
 		return c.die(BackendError, err)
 	}
@@ -699,27 +732,38 @@ func (c *Client) processSubscribe(pkt *packet.Subscribe) error {
 
 // handle an incoming unsubscribe packet
 func (c *Client) processUnsubscribe(pkt *packet.Unsubscribe) error {
-	// acquire subscribe token
+	// acquire subscribe token, try fast path first
 	select {
 	case <-c.subscribeTokens:
 		// continue
-	case <-time.After(c.TokenTimeout):
-		return c.die(ClientError, ErrTokenTimeout)
-	case <-c.tomb.Dying():
-		return tomb.ErrDying
+	default:
+		select {
+		case <-c.subscribeTokens:
+			// continue
+		case <-time.After(c.TokenTimeout):
+			return c.die(ClientError, ErrTokenTimeout)
+		case <-c.tomb.Dying():
+			return tomb.ErrDying
+		}
 	}
 
 	// prepare unsuback packet
 	unsuback := packet.NewUnsuback()
 	unsuback.ID = pkt.ID
 
+	// prepare ack
+	var once sync.Once
+	ack := func() {
+		once.Do(func() {
+			select {
+			case c.ackQueue <- unsuback:
+			case <-c.tomb.Dying():
+			}
+		})
+	}
+
 	// unsubscribe topics
-	err := c.backend.Unsubscribe(c, pkt.Topics, func() {
-		select {
-		case c.ackQueue <- unsuback:
-		case <-c.tomb.Dying():
-		}
-	})
+	err := c.backend.Unsubscribe(c, pkt.Topics, ack)
 	if err != nil {
 		return c.die(BackendError, err)
 	}
@@ -742,14 +786,19 @@ func (c *Client) processPublish(publish *packet.Publish) error {
 		return nil
 	}
 
-	// acquire publish token
+	// acquire publish token, try fast path first
 	select {
 	case <-c.publishTokens:
 		// continue
-	case <-time.After(c.TokenTimeout):
-		return c.die(ClientError, ErrTokenTimeout)
-	case <-c.tomb.Dying():
-		return tomb.ErrDying
+	default:
+		select {
+		case <-c.publishTokens:
+			// continue
+		case <-time.After(c.TokenTimeout):
+			return c.die(ClientError, ErrTokenTimeout)
+		case <-c.tomb.Dying():
+			return tomb.ErrDying
+		}
 	}
 
 	// handle qos 1 flow
@@ -758,15 +807,22 @@ func (c *Client) processPublish(publish *packet.Publish) error {
 		puback := packet.NewPuback()
 		puback.ID = publish.ID
 
-		// publish message and queue puback if ack is called
-		err := c.backend.Publish(c, &publish.Message, func() {
-			c.backend.Log(MessageAcknowledged, c, nil, &publish.Message, nil)
+		// prepare ack
+		var once sync.Once
+		ack := func() {
+			once.Do(func() {
+				c.backend.Log(MessageAcknowledged, c, nil, &publish.Message, nil)
 
-			select {
-			case c.ackQueue <- puback:
-			case <-c.tomb.Dying():
-			}
-		})
+				// queue puback
+				select {
+				case c.ackQueue <- puback:
+				case <-c.tomb.Dying():
+				}
+			})
+		}
+
+		// publish message and queue puback if ack is called
+		err := c.backend.Publish(c, &publish.Message, ack)
 		if err != nil {
 			return c.die(BackendError, err)
 		}
@@ -859,15 +915,22 @@ func (c *Client) processPubrel(id packet.ID) error {
 		return nil
 	}
 
-	// publish message and queue pubcomp if ack is called
-	err = c.backend.Publish(c, &publish.Message, func() {
-		c.backend.Log(MessageAcknowledged, c, nil, &publish.Message, nil)
+	// prepare ack
+	var once sync.Once
+	ack := func() {
+		once.Do(func() {
+			c.backend.Log(MessageAcknowledged, c, nil, &publish.Message, nil)
 
-		select {
-		case c.ackQueue <- pubcomp:
-		case <-c.tomb.Dying():
-		}
-	})
+			// queue pubcomp
+			select {
+			case c.ackQueue <- pubcomp:
+			case <-c.tomb.Dying():
+			}
+		})
+	}
+
+	// publish message and queue pubcomp if ack is called
+	err = c.backend.Publish(c, &publish.Message, ack)
 	if err != nil {
 		return c.die(BackendError, err)
 	}
@@ -886,7 +949,10 @@ func (c *Client) processDisconnect() error {
 	atomic.StoreUint32(&c.state, clientDisconnected)
 
 	// close underlying connection (triggers cleanup)
-	c.conn.Close()
+	_ = c.conn.Close()
+
+	// ensure tomb is killed
+	c.tomb.Kill(ErrClientDisconnected)
 
 	c.backend.Log(ClientDisconnected, c, nil, nil, nil)
 
@@ -915,13 +981,16 @@ func (c *Client) die(event LogEvent, err error) error {
 	// log error
 	c.backend.Log(event, c, nil, nil, err)
 
-	// close connection if requested
-	c.conn.Close()
+	// close connection
+	_ = c.conn.Close()
+
+	// ensure tomb is killed
+	c.tomb.Kill(err)
 
 	return err
 }
 
-// will try to cleanup as many resources as possible
+// will try to clean up as many resources as possible
 func (c *Client) cleanup() {
 	// check if not cleanly connected and will is present
 	if atomic.LoadUint32(&c.state) == clientConnected && c.will != nil {

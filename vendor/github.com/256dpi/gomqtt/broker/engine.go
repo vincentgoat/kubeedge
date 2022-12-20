@@ -16,14 +16,17 @@ type Engine struct {
 	// The Backend that will be passed to accepted clients.
 	Backend Backend
 
+	// ReadLimit defines the initial read limit.
+	ReadLimit int64
+
+	// MaxWriteDelay defines the initial max write delay.
+	MaxWriteDelay time.Duration
+
 	// ConnectTimeout defines the timeout to receive the first packet.
 	ConnectTimeout time.Duration
 
-	// The DefaultReadLimit defines the initial read limit.
-	DefaultReadLimit int64
-
-	// OnError can be used to receive errors from engine. If an error is received
-	// the server should be restarted.
+	// OnError can be used to receive errors from the engine. If an error is
+	// received the server should be restarted.
 	OnError func(error)
 
 	mutex sync.Mutex
@@ -35,6 +38,8 @@ func NewEngine(backend Backend) *Engine {
 	return &Engine{
 		Backend:        backend,
 		ConnectTimeout: 10 * time.Second,
+		ReadLimit:      8 * 1024 * 1024, // 8MB
+		MaxWriteDelay:  10 * time.Millisecond,
 	}
 }
 
@@ -71,7 +76,7 @@ func (e *Engine) Accept(server transport.Server) {
 func (e *Engine) Handle(conn transport.Conn) bool {
 	// check conn
 	if conn == nil {
-		panic("passed conn is nil")
+		panic("missing conn")
 	}
 
 	// acquire mutex
@@ -80,12 +85,15 @@ func (e *Engine) Handle(conn transport.Conn) bool {
 
 	// close conn immediately when dying
 	if !e.tomb.Alive() {
-		conn.Close()
+		_ = conn.Close()
 		return false
 	}
 
 	// set default read limit
-	conn.SetReadLimit(e.DefaultReadLimit)
+	conn.SetReadLimit(e.ReadLimit)
+
+	// set initial max write delay
+	conn.SetMaxWriteDelay(e.MaxWriteDelay)
 
 	// set initial read timeout
 	conn.SetReadTimeout(e.ConnectTimeout)
@@ -107,11 +115,11 @@ func (e *Engine) Close() {
 
 	// stop acceptors
 	e.tomb.Kill(nil)
-	e.tomb.Wait()
+	_ = e.tomb.Wait()
 }
 
 // Run runs the passed engine on a random available port and returns a channel
-// that can be closed to shutdown the engine. This method is intended to be used
+// that can be closed to shut down the engine. This method is intended to be used
 // in testing scenarios.
 func Run(engine *Engine, protocol string) (string, chan struct{}, chan struct{}) {
 	// launch server
@@ -133,7 +141,7 @@ func Run(engine *Engine, protocol string) (string, chan struct{}, chan struct{})
 		<-quit
 
 		// errors from close are ignored
-		server.Close()
+		_ = server.Close()
 
 		// close broker
 		engine.Close()
