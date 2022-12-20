@@ -37,10 +37,9 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
-	golang.org/x/sys v0.0.0-20220704084225-05e143d24a9e // indirect
+	golang.org/x/net v0.0.0-20220722155237-a158d28d115b
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
-	google.golang.org/grpc v1.42.0
+	google.golang.org/grpc v1.51.0
 	google.golang.org/protobuf v1.27.1
 	helm.sh/helm/v3 v3.7.2
 	k8s.io/api v0.22.6
