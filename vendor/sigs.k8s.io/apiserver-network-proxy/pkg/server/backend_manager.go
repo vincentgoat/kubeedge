@@ -272,7 +272,7 @@ type ErrNotFound struct{}
 
 // Error returns the error message.
 func (e *ErrNotFound) Error() string {
-	return "No backend available"
+	return "No agent available"
 }
 
 type ErrWrongIDType struct {
@@ -293,8 +293,8 @@ func ignoreNotFound(err error) error {
 
 // GetRandomBackend returns a random backend connection from all connected agents.
 func (s *DefaultBackendStorage) GetRandomBackend() (Backend, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if len(s.backends) == 0 {
 		return nil, &ErrNotFound{}
 	}
