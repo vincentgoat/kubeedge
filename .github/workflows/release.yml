@@ -5,6 +5,7 @@ on:
       - published
 env:
   CONTAINER_RUN_OPTIONS: " "
+  REPOSITORY: vincentgoat
 
 jobs:
   release-assests:
@@ -12,19 +13,26 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        target: ["kubeedge","edgesite","keadm"]
-        os: ["linux"]
-        ARM_VERSION: ["GOARM7","GOARM8",""]
+        target:
+          #- kubeedge
+          - edgesite
+          #- keadm
+        os:
+          - linux
+        ARM_VERSION:
+          - GOARM7
+          #- GOARM8
+          - ""
     outputs:
-      kubeedge-amd64: ${{ steps.hash.outputs.hash-kubeedge-amd64 }}
-      kubeedge-arm64: ${{ steps.hash.outputs.hash-kubeedge-arm64 }}
-      kubeedge-arm: ${{ steps.hash.outputs.hash-kubeedge-arm }}
-      keadm-amd64: ${{ steps.hash.outputs.hash-keadm-amd64 }}
-      keadm-arm64: ${{ steps.hash.outputs.hash-keadm-arm64 }}
-      keadm-arm: ${{ steps.hash.outputs.hash-keadm-arm }}
-      edgesite-amd64: ${{ steps.hash.outputs.hash-edgesite-amd64 }}
-      edgesite-arm64: ${{ steps.hash.outputs.hash-edgesite-arm64 }}
-      edgesite-arm: ${{ steps.hash.outputs.hash-edgesite-arm }}
+      #hash-kubeedge-amd64: ${{ steps.hash.outputs.hash-kubeedge-amd64 }}
+      #hash-kubeedge-arm64: ${{ steps.hash.outputs.hash-kubeedge-arm64 }}
+      #hash-kubeedge-arm:   ${{ steps.hash.outputs.hash-kubeedge-arm }}
+      #hash-keadm-amd64:    ${{ steps.hash.outputs.hash-keadm-amd64 }}
+      #hash-keadm-arm64:    ${{ steps.hash.outputs.hash-keadm-arm64 }}
+      #hash-keadm-arm:      ${{ steps.hash.outputs.hash-keadm-arm }}
+      hash-edgesite-amd64: ${{ steps.hash.outputs.hash-edgesite-amd64 }}
+      #hash-edgesite-arm64: ${{ steps.hash.outputs.hash-edgesite-arm64 }}
+      hash-edgesite-arm:   ${{ steps.hash.outputs.hash-edgesite-arm }}
     steps:
       - name: checkout code
         uses: actions/checkout@v3
@@ -58,6 +66,7 @@ jobs:
 
   combine_hashes:
     needs: [release-assests]
+    runs-on: ubuntu-22.04
     outputs:
       hashes: ${{ steps.hashes.outputs.hashes }}
     env:
@@ -86,15 +95,15 @@ jobs:
     strategy:
       matrix:
         target:
-          - cloudcore
+          #- cloudcore
           - admission
-          - edgesite-agent
-          - edgesite-server
-          - csidriver
-          - iptablesmanager
-          - edgemark
-          - installation-package
-          - controllermanager
+          #- edgesite-agent
+          #- edgesite-server
+          #- csidriver
+          #- iptablesmanager
+          #- edgemark
+          #- installation-package
+          #- controllermanager
     runs-on: ubuntu-22.04
     steps:
       - name: checkout code
@@ -114,6 +123,23 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USER_NAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: build and publish images
-        env:
-          IMAGE_REPO_NAME: kubeedge
-        run: make crossbuildimage WHAT=${{ matrix.target }}
+        id: build
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          file: build/${{ matrix.target }}/Dockerfile
+          #platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REPOSITORY }}/${{ matrix.target }}:${{ github.ref_name }}
+      - name: echo digest
+        run: |
+          echo "${{ env.REPOSITORY }}/${{ matrix.target }}:${{ github.ref_name }}" >> digest.txt
+          echo ${{ steps.build.outputs.digest }}
+          echo ${{ steps.build.outputs.digest }} >> digest.txt
+          cat digest.txt
+          docker images
+        #env:
+        #  IMAGE_REPO_NAME: kubeedge
+        #run: make crossbuildimage WHAT=${{ matrix.target }}
