@@ -3,9 +3,23 @@ on:
   release:
     types:
       - published
+  workflow_call:
+    inputs:
+      image_repository:
+        description: 'The repository to push the image to'
+        required: true
+        default: 'vincentgoat'
+        type: string
+    secrets:
+      DOCKERHUB_USER_NAME:
+        description: 'DockerHub username'
+        required: true
+      DOCKERHUB_TOKEN:
+        description: 'DockerHub token'
+        required: true
 env:
   CONTAINER_RUN_OPTIONS: " "
-  REPOSITORY: vincentgoat
+  IMAGE_REPOSITORY: vincentgoat
 
 jobs:
   release-assests:
@@ -20,7 +34,7 @@ jobs:
         os:
           - linux
         ARM_VERSION:
-          - GOARM7
+          #- GOARM7
           #- GOARM8
           - ""
     outputs:
@@ -32,7 +46,7 @@ jobs:
       #hash-keadm-arm:      ${{ steps.hash.outputs.hash-keadm-arm }}
       hash-edgesite-amd64: ${{ steps.hash.outputs.hash-edgesite-amd64 }}
       #hash-edgesite-arm64: ${{ steps.hash.outputs.hash-edgesite-arm64 }}
-      hash-edgesite-arm:   ${{ steps.hash.outputs.hash-edgesite-arm }}
+      #hash-edgesite-arm:   ${{ steps.hash.outputs.hash-edgesite-arm }}
     steps:
       - name: checkout code
         uses: actions/checkout@v3
@@ -104,6 +118,25 @@ jobs:
           #- edgemark
           #- installation-package
           #- controllermanager
+    outputs:
+      #hash-digest-cloudcore: ${{ steps.hash.outputs.hash-digest-cloudcore }}
+      #hash-image-cloudcore: ${{ steps.hash.outputs.hash-image-cloudcore }}
+      hash-digest-admission: ${{ steps.hash.outputs.hash-digest-admission }}
+      #hash-image-admission: ${{ steps.hash.outputs.hash-image-admission }}
+      #hash-digest-edgesite-agent: ${{ steps.hash.outputs.hash-digest-edgesite-agent }}
+      #hash-image-edgesite-agent: ${{ steps.hash.outputs.hash-image-edgesite-agent }}
+      #hash-digest-edgesite-server: ${{ steps.hash.outputs.hash-digest-edgesite-server }}
+      #hash-image-edgesite-server: ${{ steps.hash.outputs.hash-image-edgesite-server }}
+      #hash-digest-csidriver: ${{ steps.hash.outputs.hash-digest-csidriver }}
+      #hash-image-csidriver: ${{ steps.hash.outputs.hash-image-csidriver }}
+      #hash-digest-iptablesmanager: ${{ steps.hash.outputs.hash-digest-iptablesmanager }}
+      #hash-image-iptablesmanager: ${{ steps.hash.outputs.hash-image-iptablesmanager }}
+      #hash-digest-edgemark: ${{ steps.hash.outputs.hash-digest-edgemark }}
+      #hash-image-edgemark: ${{ steps.hash.outputs.hash-image-edgemark }}
+      #hash-digest-installation-package: ${{ steps.hash.outputs.hash-digest-installation-package }}
+      #hash-image-installation-package: ${{ steps.hash.outputs.hash-image-installation-package }}
+      #hash-digest-controllermanager: ${{ steps.hash.outputs.hash-digest-controllermanager }}
+      #hash-image-controllermanager: ${{ steps.hash.outputs.hash-image-controllermanager }}
     runs-on: ubuntu-22.04
     steps:
       - name: checkout code
@@ -118,28 +151,77 @@ jobs:
       - name: install Buildx
         uses: docker/setup-buildx-action@v1
       - name: login to DockerHub
-        uses: docker/login-action@v1
+        uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USER_NAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: generate dockerfile path
+        run: |
+          echo "dockerfile_path=$(./hack/make-rules/imageprocess.sh dockerfile ${{ matrix.target }})" >> $GITHUB_ENV
       - name: build and publish images
         id: build
         uses: docker/build-push-action@v3
         with:
           context: .
-          file: build/${{ matrix.target }}/Dockerfile
+          file: ${{ env.dockerfile_path }}
           #platforms: linux/amd64,linux/arm64,linux/arm/v7
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: |
-            ${{ env.REPOSITORY }}/${{ matrix.target }}:${{ github.ref_name }}
-      - name: echo digest
+            ${{ env.IMAGE_REPOSITORY }}/${{ matrix.target }}:${{ github.ref_name }}
+      - name: generate digest
+        id: hash
         run: |
-          echo "${{ env.REPOSITORY }}/${{ matrix.target }}:${{ github.ref_name }}" >> digest.txt
+          echo "hash-digest-${{ matrix.target }}=${{ steps.build.outputs.digest }}" >> $GITHUB_OUTPUT
           echo ${{ steps.build.outputs.digest }}
-          echo ${{ steps.build.outputs.digest }} >> digest.txt
-          cat digest.txt
-          docker images
-        #env:
-        #  IMAGE_REPO_NAME: kubeedge
-        #run: make crossbuildimage WHAT=${{ matrix.target }}
+
+  generate-inputs:
+    name: generate inputs
+    runs-on: ubuntu-22.04
+    outputs:
+      repository: ${{ steps.generate.outputs.repository }}
+      username: ${{ steps.generate.outputs.username }}
+    steps:
+      - id: generate
+        run: |
+          echo "${{ inputs.image_repository }}"
+          echo "${{ secrets.DOCKERHUB_USER_NAME }}"
+          echo "repository=${{ inputs.image_repository }}" >> $GITHUB_OUTPUT
+          echo "username=${{ secrets.DOCKERHUB_USER_NAME }}" >> $GITHUB_OUTPUT
+  login:
+    needs: [ generate-inputs ]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: docker/login-action@v2
+        with:
+          username: ${{ needs.generate-inputs.outputs.username }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+  # This step calls the container workflow to generate provenance and push it to
+  # the container registry.
+  image-provenance:
+    needs: [publish-image-to-dockerhub, generate-inputs]
+    strategy:
+      matrix:
+        target:
+          #- cloudcore
+          - admission
+          #- edgesite-agent
+          #- edgesite-server
+          #- csidriver
+          #- iptablesmanager
+          #- edgemark
+          #- installation-package
+          #- controllermanager
+    permissions:
+      actions: read # for detecting the Github Actions environment.
+      id-token: write # for creating OIDC tokens for signing.
+      packages: write # for uploading attestations.
+    if: startsWith(github.ref, 'refs/tags/')
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v1.4.0
+    with:
+      image: ${{ inputs.image_repository }}/${{ matrix.target }}
+      digest: ${{ needs.publish-image-to-dockerhub.outputs[format('hash-digest-{0}', matrix.target)] }}
+      registry-username: ${{ secrets.DOCKERHUB_USER_NAME }}
+      private-repository: true
+    secrets:
+      registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
