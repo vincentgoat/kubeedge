@@ -16,11 +16,11 @@ require (
 	github.com/docker/go-connections v0.4.0
 	github.com/eclipse/paho.mqtt.golang v1.2.0
 	github.com/emicklei/go-restful v2.9.6+incompatible
-	github.com/evanphx/json-patch v4.11.0+incompatible
+	github.com/evanphx/json-patch v4.12.0+incompatible
 	github.com/golang-jwt/jwt v3.2.2+incompatible
-	github.com/golang/mock v1.5.0
+	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.2
-	github.com/google/uuid v1.2.0
+	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/kubeedge/beehive v0.0.0
@@ -31,41 +31,40 @@ require (
 	github.com/onsi/ginkgo/v2 v2.1.4
 	github.com/onsi/gomega v1.19.0
 	github.com/opencontainers/runc v1.0.3 // indirect
-	github.com/prometheus/client_golang v1.11.0
+	github.com/prometheus/client_golang v1.13.0
 	github.com/shirou/gopsutil v2.21.11+incompatible
-	github.com/spf13/cobra v1.2.1
+	github.com/spf13/cobra v1.5.0
 	github.com/spf13/pflag v1.0.5
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
-	golang.org/x/sys v0.0.0-20220704084225-05e143d24a9e // indirect
-	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
-	google.golang.org/grpc v1.42.0
-	google.golang.org/protobuf v1.27.1
+	golang.org/x/net v0.0.0-20220812174116-3211cb980234
+	golang.org/x/time v0.0.0-20220722155302-e5dcc9cfc0b9
+	google.golang.org/grpc v1.48.0
+	google.golang.org/protobuf v1.28.1
 	helm.sh/helm/v3 v3.7.2
-	k8s.io/api v0.22.6
+	k8s.io/api v0.24.3
 	k8s.io/apiextensions-apiserver v0.22.6
-	k8s.io/apimachinery v0.22.6
+	k8s.io/apimachinery v0.24.3
 	k8s.io/apiserver v0.22.6
 	k8s.io/cli-runtime v0.22.6
-	k8s.io/client-go v0.22.6
+	k8s.io/client-go v0.24.3
 	k8s.io/cloud-provider v0.22.6 // indirect
 	k8s.io/cluster-bootstrap v0.22.6 // indirect
 	k8s.io/code-generator v0.22.6
-	k8s.io/component-base v0.22.6
+	k8s.io/component-base v0.24.3
 	k8s.io/cri-api v0.22.6
 	k8s.io/csi-translation-lib v0.22.6 // indirect
-	k8s.io/klog/v2 v2.9.0
-	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
+	k8s.io/klog/v2 v2.70.1
+	k8s.io/kube-openapi v0.0.0-20220803164354-a70c9af30aea
 	k8s.io/kube-scheduler v0.22.6 // indirect
 	k8s.io/kubelet v0.22.6
 	k8s.io/kubernetes v1.22.6
 	k8s.io/mount-utils v0.22.6
-	k8s.io/utils v0.0.0-20210819203725-bdf08cb9a70a
-	sigs.k8s.io/apiserver-network-proxy v0.0.27
+	k8s.io/utils v0.0.0-20220812165043-ad590609e2e5
+	sigs.k8s.io/apiserver-network-proxy v0.0.33
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.27
 	sigs.k8s.io/controller-runtime v0.10.3
-	sigs.k8s.io/yaml v1.2.0
+	sigs.k8s.io/yaml v1.3.0
 )
 
 replace (

@@ -27,6 +27,7 @@ type GrpcProxyAgentOptions struct {
 	AlpnProtos      []string
 
 	// Ports for the health and admin server
+	HealthServerHost string
 	HealthServerPort int
 	AdminServerPort  int
 	// Enables pprof at host:adminPort/debug/pprof.
@@ -80,11 +81,12 @@ func (o *GrpcProxyAgentOptions) Flags() *pflag.FlagSet {
 	flags.StringVar(&o.ProxyServerHost, "proxy-server-host", o.ProxyServerHost, "The hostname to use to connect to the proxy-server.")
 	flags.IntVar(&o.ProxyServerPort, "proxy-server-port", o.ProxyServerPort, "The port the proxy server is listening on.")
 	flags.StringSliceVar(&o.AlpnProtos, "alpn-proto", o.AlpnProtos, "Additional ALPN protocols to be presented when connecting to the server. Useful to distinguish between network proxy and apiserver connections that share the same destination address.")
+	flags.StringVar(&o.HealthServerHost, "health-server-host", o.HealthServerHost, "The host address to listen on, without port.")
 	flags.IntVar(&o.HealthServerPort, "health-server-port", o.HealthServerPort, "The port the health server is listening on.")
 	flags.IntVar(&o.AdminServerPort, "admin-server-port", o.AdminServerPort, "The port the admin server is listening on.")
 	flags.BoolVar(&o.EnableProfiling, "enable-profiling", o.EnableProfiling, "enable pprof at host:admin-port/debug/pprof")
 	flags.BoolVar(&o.EnableContentionProfiling, "enable-contention-profiling", o.EnableContentionProfiling, "enable contention profiling at host:admin-port/debug/pprof/block. \"--enable-profiling\" must also be set.")
-	flags.StringVar(&o.AgentID, "agent-id", o.AgentID, "The unique ID of this agent. Default to a generated uuid if not set.")
+	flags.StringVar(&o.AgentID, "agent-id", o.AgentID, "The unique ID of this agent. Can also be set by the 'PROXY_AGENT_ID' environment variable. Default to a generated uuid if not set.")
 	flags.DurationVar(&o.SyncInterval, "sync-interval", o.SyncInterval, "The initial interval by which the agent periodically checks if it has connections to all instances of the proxy server.")
 	flags.DurationVar(&o.ProbeInterval, "probe-interval", o.ProbeInterval, "The interval by which the agent periodically checks if its connections to the proxy server are ready.")
 	flags.DurationVar(&o.SyncIntervalCap, "sync-interval-cap", o.SyncIntervalCap, "The maximum interval for the SyncInterval to back off to when unable to connect to the proxy server")
@@ -103,6 +105,7 @@ func (o *GrpcProxyAgentOptions) Print() {
 	klog.V(1).Infof("ProxyServerHost set to %q.\n", o.ProxyServerHost)
 	klog.V(1).Infof("ProxyServerPort set to %d.\n", o.ProxyServerPort)
 	klog.V(1).Infof("ALPNProtos set to %+s.\n", o.AlpnProtos)
+	klog.V(1).Infof("HealthServerHost set to %s\n", o.HealthServerHost)
 	klog.V(1).Infof("HealthServerPort set to %d.\n", o.HealthServerPort)
 	klog.V(1).Infof("AdminServerPort set to %d.\n", o.AdminServerPort)
 	klog.V(1).Infof("EnableProfiling set to %v.\n", o.EnableProfiling)
@@ -192,11 +195,12 @@ func NewGrpcProxyAgentOptions() *GrpcProxyAgentOptions {
 		CaCert:                    "",
 		ProxyServerHost:           "127.0.0.1",
 		ProxyServerPort:           8091,
+		HealthServerHost:          "",
 		HealthServerPort:          8093,
 		AdminServerPort:           8094,
 		EnableProfiling:           false,
 		EnableContentionProfiling: false,
-		AgentID:                   uuid.New().String(),
+		AgentID:                   defaultAgentID(),
 		AgentIdentifiers:          "",
 		SyncInterval:              1 * time.Second,
 		ProbeInterval:             1 * time.Second,
@@ -207,4 +211,13 @@ func NewGrpcProxyAgentOptions() *GrpcProxyAgentOptions {
 		SyncForever:               false,
 	}
 	return &o
+}
+
+func defaultAgentID() string {
+	// Default to the value set by the PROXY_AGENT_ID environment variable. If both the flag &
+	// environment variable are set, the flag always wins.
+	if id := os.Getenv("PROXY_AGENT_ID"); id != "" {
+		return id
+	}
+	return uuid.New().String()
 }
