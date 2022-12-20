@@ -1,9 +1,6 @@
 package packet
 
-import (
-	"encoding/binary"
-	"fmt"
-)
+import "fmt"
 
 // A Publish packet is sent from a client to a server or from server to a client
 // to transport an application message.
@@ -27,82 +24,81 @@ func NewPublish() *Publish {
 }
 
 // Type returns the packets type.
-func (pp *Publish) Type() Type {
+func (p *Publish) Type() Type {
 	return PUBLISH
 }
 
 // String returns a string representation of the packet.
-func (pp *Publish) String() string {
+func (p *Publish) String() string {
 	return fmt.Sprintf("<Publish ID=%d Message=%s Dup=%t>",
-		pp.ID, pp.Message.String(), pp.Dup)
+		p.ID, p.Message.String(), p.Dup)
 }
 
 // Len returns the byte length of the encoded packet.
-func (pp *Publish) Len() int {
-	ml := pp.len()
+func (p *Publish) Len() int {
+	ml := p.len()
 	return headerLen(ml) + ml
 }
 
 // Decode reads from the byte slice argument. It returns the total number of
 // bytes decoded, and whether there have been any errors during the process.
-func (pp *Publish) Decode(src []byte) (int, error) {
-	total := 0
-
+func (p *Publish) Decode(src []byte) (int, error) {
 	// decode header
-	hl, flags, rl, err := headerDecode(src[total:], PUBLISH)
-	total += hl
+	hl, flags, rl, err := decodeHeader(src, PUBLISH)
+	total := hl
 	if err != nil {
 		return total, err
 	}
 
 	// read flags
-	pp.Dup = ((flags >> 3) & 0x1) == 1
-	pp.Message.Retain = (flags & 0x1) == 1
-	pp.Message.QOS = QOS((flags >> 1) & 0x3)
+	p.Dup = ((flags >> 3) & 0x1) == 1
+	p.Message.Retain = (flags & 0x1) == 1
+	p.Message.QOS = QOS((flags >> 1) & 0x3)
 
 	// check qos
-	if !pp.Message.QOS.Successful() {
-		return total, makeError(pp.Type(), "invalid QOS level (%d)", pp.Message.QOS)
+	if !p.Message.QOS.Successful() {
+		return total, makeError(PUBLISH, "invalid QOS level (%d)", p.Message.QOS)
 	}
-
-	// check buffer length
-	if len(src) < total+2 {
-		return total, makeError(pp.Type(), "insufficient buffer size, expected %d, got %d", total+2, len(src))
-	}
-
-	n := 0
 
 	// read topic
-	pp.Message.Topic, n, err = readLPString(src[total:], pp.Type())
+	topic, n, err := readLPString(src[total:], PUBLISH)
 	total += n
 	if err != nil {
 		return total, err
 	}
 
-	if pp.Message.QOS != 0 {
+	// set topic
+	p.Message.Topic = topic
+
+	// check quality of service
+	if p.Message.QOS != 0 {
 		// check buffer length
 		if len(src) < total+2 {
-			return total, makeError(pp.Type(), "insufficient buffer size, expected %d, got %d", total+2, len(src))
+			return total, insufficientBufferSize(PUBLISH)
 		}
 
 		// read packet id
-		pp.ID = ID(binary.BigEndian.Uint16(src[total:]))
-		total += 2
+		pid, n, err := readUint(src[total:], 2, PUBLISH)
+		total += n
+		if err != nil {
+			return total, err
+		}
 
-		// check packet id
-		if !pp.ID.Valid() {
-			return total, makeError(pp.Type(), "packet id must be grater than zero")
+		// set packet id
+		p.ID = ID(pid)
+		if !p.ID.Valid() {
+			return total, makeError(PUBLISH, "packet id must be grater than zero")
 		}
 	}
 
 	// calculate payload length
-	l := int(rl) - (total - hl)
+	l := rl - (total - hl)
 
 	// read payload
 	if l > 0 {
-		pp.Message.Payload = make([]byte, l)
-		copy(pp.Message.Payload, src[total:total+l])
-		total += len(pp.Message.Payload)
+		p.Message.Payload = make([]byte, l)
+		copy(p.Message.Payload, src[total:total+l])
+		total += len(p.Message.Payload)
 	}
 
 	return total, nil
@@ -111,74 +107,73 @@ func (pp *Publish) Decode(src []byte) (int, error) {
 // Encode writes the packet bytes into the byte slice from the argument. It
 // returns the number of bytes encoded and whether there's any errors along
 // the way. If there is an error, the byte slice should be considered invalid.
-func (pp *Publish) Encode(dst []byte) (int, error) {
-	total := 0
-
+func (p *Publish) Encode(dst []byte) (int, error) {
 	// check topic length
-	if len(pp.Message.Topic) == 0 {
-		return total, makeError(pp.Type(), "topic name is empty")
+	if len(p.Message.Topic) == 0 {
+		return 0, makeError(PUBLISH, "topic name is empty")
 	}
 
-	flags := byte(0)
+	// prepare flags
+	var flags byte
 
 	// set dup flag
-	if pp.Dup {
+	if p.Dup {
 		flags |= 0x8 // 00001000
-	} else {
-		flags &= 247 // 11110111
 	}
 
 	// set retain flag
-	if pp.Message.Retain {
+	if p.Message.Retain {
 		flags |= 0x1 // 00000001
-	} else {
-		flags &= 254 // 11111110
 	}
 
 	// check qos
-	if !pp.Message.QOS.Successful() {
-		return 0, makeError(pp.Type(), "invalid QOS level %d", pp.Message.QOS)
+	if !p.Message.QOS.Successful() {
+		return 0, makeError(PUBLISH, "invalid QOS level %d", p.Message.QOS)
 	}
 
 	// check packet id
-	if pp.Message.QOS > 0 && !pp.ID.Valid() {
-		return total, makeError(pp.Type(), "packet id must be grater than zero")
+	if p.Message.QOS > 0 && !p.ID.Valid() {
+		return 0, makeError(PUBLISH, "packet id must be grater than zero")
 	}
 
 	// set qos
-	flags = (flags & 249) | (byte(pp.Message.QOS) << 1) // 249 = 11111001
+	flags = (flags & 249) | (byte(p.Message.QOS) << 1) // 249 = 11111001
 
 	// encode header
-	n, err := headerEncode(dst[total:], flags, pp.len(), pp.Len(), PUBLISH)
-	total += n
+	total, err := encodeHeader(dst, flags, p.len(), p.Len(), PUBLISH)
 	if err != nil {
 		return total, err
 	}
 
 	// write topic
-	n, err = writeLPString(dst[total:], pp.Message.Topic, pp.Type())
+	n, err := writeLPString(dst[total:], p.Message.Topic, PUBLISH)
 	total += n
 	if err != nil {
 		return total, err
 	}
 
 	// write packet id
-	if pp.Message.QOS != 0 {
-		binary.BigEndian.PutUint16(dst[total:], uint16(pp.ID))
-		total += 2
+	if p.Message.QOS != 0 {
+		n, err := writeUint(dst[total:], uint64(p.ID), 2, PUBLISH)
+		total += n
+		if err != nil {
+			return total, err
+		}
 	}
 
 	// write payload
-	copy(dst[total:], pp.Message.Payload)
-	total += len(pp.Message.Payload)
+	copy(dst[total:], p.Message.Payload)
+	total += len(p.Message.Payload)
 
 	return total, nil
 }
 
-// Returns the payload length.
-func (pp *Publish) len() int {
-	total := 2 + len(pp.Message.Topic) + len(pp.Message.Payload)
-	if pp.Message.QOS != 0 {
+func (p *Publish) len() int {
+	// topic + payload
+	total := 2 + len(p.Message.Topic) + len(p.Message.Payload)
+
+	// packet iD
+	if p.Message.QOS != 0 {
 		total += 2
 	}
 

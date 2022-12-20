@@ -3,7 +3,7 @@ module github.com/kubeedge/kubeedge
 go 1.16
 
 require (
-	github.com/256dpi/gomqtt v0.10.4
+	github.com/256dpi/gomqtt v0.14.4
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2 // indirect
 	github.com/astaxie/beego v1.12.0
 	github.com/blang/semver v3.5.1+incompatible

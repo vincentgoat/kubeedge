@@ -1,73 +1,40 @@
 package packet
 
-import (
-	"encoding/binary"
-)
-
-const maxRemainingLength = 268435455 // 256 MB
-
 func headerLen(rl int) int {
-	// packet type and flag byte
-	total := 1
-
-	if rl <= 127 {
-		total++
-	} else if rl <= 16383 {
-		total += 2
-	} else if rl <= 2097151 {
-		total += 3
-	} else {
-		total += 4
-	}
-
-	return total
+	// add packet type and flag byte + remaining length
+	return 1 + varintLen(uint64(rl))
 }
 
-func headerEncode(dst []byte, flags byte, rl int, tl int, t Type) (int, error) {
-	total := 0
-
+func encodeHeader(dst []byte, flags byte, rl int, tl int, t Type) (int, error) {
 	// check buffer length
-	if len(dst) < tl {
-		return total, makeError(t, "insufficient buffer size, expected %d, got %d", tl, len(dst))
-	}
-
-	// check remaining length
-	if rl > maxRemainingLength || rl < 0 {
-		return total, makeError(t, "remaining length (%d) out of bound (max %d, min 0)", rl, maxRemainingLength)
-	}
-
-	// check header length
-	hl := headerLen(rl)
-	if len(dst) < hl {
-		return total, makeError(t, "insufficient buffer size, expected %d, got %d", hl, len(dst))
+	if len(dst) < headerLen(rl) || len(dst) < tl {
+		return 0, insufficientBufferSize(t)
 	}
 
 	// write type and flags
 	typeAndFlags := byte(t)<<4 | (t.defaultFlags() & 0xf)
 	typeAndFlags |= flags
-	dst[total] = typeAndFlags
-	total++
+	dst[0] = typeAndFlags
 
 	// write remaining length
-	n := binary.PutUvarint(dst[total:], uint64(rl))
-	total += n
+	n, err := writeVarint(dst[1:], uint64(rl), t)
+	if err != nil {
+		return 0, err
+	}
 
-	return total, nil
+	return 1 + n, nil
 }
 
-func headerDecode(src []byte, t Type) (int, byte, int, error) {
-	total := 0
-
+func decodeHeader(src []byte, t Type) (int, byte, int, error) {
 	// check buffer size
 	if len(src) < 2 {
-		return total, 0, 0, makeError(t, "insufficient buffer size, expected %d, got %d", 2, len(src))
+		return 0, 0, 0, insufficientBufferSize(t)
 	}
 
 	// read type and flags
-	typeAndFlags := src[total : total+1]
-	decodedType := Type(typeAndFlags[0] >> 4)
-	flags := typeAndFlags[0] & 0x0f
-	total++
+	decodedType := Type(src[0] >> 4)
+	flags := src[0] & 0x0f
+	total := 1
 
 	// check against static type
 	if decodedType != t {
@@ -80,14 +47,14 @@ func headerDecode(src []byte, t Type) (int, byte, int, error) {
 	}
 
 	// read remaining length
-	_rl, m := binary.Uvarint(src[total:])
-	rl := int(_rl)
-	total += m
-
-	// check resulting remaining length
-	if m <= 0 {
-		return total, 0, 0, makeError(t, "error reading remaining length")
+	_rl, n, err := readVarint(src[total:], t)
+	total += n
+	if err != nil {
+		return total, 0, 0, err
 	}
+
+	// get remaining length
+	rl := int(_rl)
 
 	// check remaining buffer
 	if rl > len(src[total:]) {

@@ -18,9 +18,9 @@ type wsStream struct {
 	reader io.Reader
 }
 
-func (s *wsStream) Read(p []byte) (int, error) {
+func (s *wsStream) Read(buf []byte) (int, error) {
+	// prepare total
 	total := 0
-	buf := p
 
 	for {
 		// get next reader
@@ -57,20 +57,20 @@ func (s *wsStream) Read(p []byte) (int, error) {
 	}
 }
 
-func (s *wsStream) Write(p []byte) (n int, err error) {
-	// create writer if missing
+func (s *wsStream) Write(buf []byte) (n int, err error) {
+	// create writer
 	writer, err := s.conn.NextWriter(websocket.BinaryMessage)
 	if err != nil {
 		return 0, err
 	}
 
-	// write packet to writer
-	n, err = writer.Write(p)
+	// write buffer
+	n, err = writer.Write(buf)
 	if err != nil {
 		return n, err
 	}
 
-	// close temporary writer
+	// close writer
 	err = writer.Close()
 	if err != nil {
 		return n, err

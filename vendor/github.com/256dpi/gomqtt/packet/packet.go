@@ -36,7 +36,7 @@ func (id ID) Valid() bool {
 	return id != 0
 }
 
-//Generic is an MQTT control packet that can be encoded to a buffer or decoded
+// Generic is an MQTT control packet that can be encoded to a buffer or decoded
 // from a buffer.
 type Generic interface {
 	// Type returns the packets type.
@@ -79,7 +79,7 @@ func DetectPacket(src []byte) (int, Type) {
 }
 
 // GetID checks the packets type and returns its ID and true, or if it
-// does not have a ID, zero and false.
+// does not have an ID, zero and false.
 func GetID(pkt Generic) (ID, bool) {
 	switch pkt.Type() {
 	case PUBLISH:
