@@ -18,23 +18,17 @@ jobs:
           - keadm
         os:
           - linux
+        arch:
+          - amd64
+          - arm64
+          - arm
         ARM_VERSION:
           - GOARM7
           - GOARM8
           - ""
-    outputs:
-      kubeedge-amd64: ${{ steps.hash.outputs.hash-kubeedge-amd64 }}
-      kubeedge-arm64: ${{ steps.hash.outputs.hash-kubeedge-arm64 }}
-      kubeedge-arm: ${{ steps.hash.outputs.hash-kubeedge-arm }}
-      keadm-amd64: ${{ steps.hash.outputs.hash-keadm-amd64 }}
-      keadm-arm64: ${{ steps.hash.outputs.hash-keadm-arm64 }}
-      keadm-arm: ${{ steps.hash.outputs.hash-keadm-arm }}
-      edgesite-amd64: ${{ steps.hash.outputs.hash-edgesite-amd64 }}
-      edgesite-arm64: ${{ steps.hash.outputs.hash-edgesite-arm64 }}
-      edgesite-arm: ${{ steps.hash.outputs.hash-edgesite-arm }}
     steps:
       - name: checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v2
         with:
           # fetch-depth:
           # 0 indicates all history for all branches and tags.
@@ -43,69 +37,32 @@ jobs:
       - name: Making and packaging
         run: |
           docker pull kubeedge/build-tools
-          make release WHAT=${{ matrix.target }} ARM_VERSION=${{ matrix.ARM_VERSION }}
-      - name: Generate arch
-        run: |
-          if [ "${{ matrix.ARM_VERSION }}" = "GOARM7" ]; then echo "output_arch=arm" >> $GITHUB_ENV; elif [ ${{ matrix.ARM_VERSION }} = "GOARM8" ]; then echo "output_arch=arm64" >> $GITHUB_ENV; else echo "output_arch=amd64" >> $GITHUB_ENV; fi
-      - name: Generate hashes
-        shell: bash
-        id: hash
-        run: |
-          cp _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.tar.gz .
-          echo "hash-${{ matrix.target }}-${{ env.output_arch }}=$( \
-                      sha256sum ${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch}}.tar.gz | base64 -w0 \
-                    )" >> "$GITHUB_OUTPUT"
+          make release ARM_VERSION=${{ matrix.ARM_VERSION }}
       - name: Uploading assets...
         if: ${{ !env.ACT }}
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.tar.gz
-            _output/release/${{ github.ref_name }}/checksum_${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.tar.gz.txt
-
-  combine_hashes:
-    needs: [release-assests]
-    outputs:
-      hashes: ${{ steps.hashes.outputs.hashes }}
-    env:
-      HASHES: ${{ toJSON(needs.release-assests.outputs) }}
-    steps:
-      - id: hashes
-        run: |
-          echo "$HASHES" | jq -r '.[] | @base64d' | sed "/^$/d" > hashes.txt
-          echo "hashes=$(cat hashes.txt | base64 -w0)" >> "$GITHUB_OUTPUT"
-
-  # This step calls the generic workflow to generate provenance.
-  provenance:
-    needs: [combine_hashes]
-    permissions:
-      actions: read
-      id-token: write
-      contents: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.2.2
-    with:
-      base64-subjects: "${{ needs.combine_hashes.outputs.hashes }}"
-      # Upload provenance to a new release
-      upload-assets: true
-
+            _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+            _output/release/${{ github.ref_name }}/checksum_${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz.txt
   publish-image-to-dockerhub:
     name: publish to DockerHub
     strategy:
       matrix:
         target:
-          #- cloudcore
+          - cloudcore
           - admission
-          #- edgesite-agent
-          #- edgesite-server
-          #- csidriver
-          #- iptablesmanager
-          #- edgemark
-          #- installation-package
-          #- controllermanager
+          - edgesite-agent
+          - edgesite-server
+          - csidriver
+          - iptablesmanager
+          - edgemark
+          - installation-package
+          - controllermanager
     runs-on: ubuntu-18.04
     steps:
       - name: checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v2
         with:
           # fetch-depth:
           # 0 indicates all history for all branches and tags.
@@ -121,19 +78,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USER_NAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: build and publish images
-        uses: docker/build-push-action@v3
-        with:
-          context: .
-          file: build/${{ matrix.target }}/Dockerfile
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
-          push: true
-          tags: |
-            kubeedge/${{ matrix.target }}:${{ github.ref_name }}
-      - name: echo digest
-        run: |
-          echo "kubeedge/${{ matrix.target }}:${{ github.ref_name }}" >> digest.txt
-          echo ${digest} >> digest.txt
-          cat digest.txt
-        #env:
-        #  IMAGE_REPO_NAME: kubeedge
-        #run: make crossbuildimage WHAT=${{ matrix.target }}
+        env:
+          IMAGE_REPO_NAME: kubeedge
+        run: make crossbuildimage WHAT=${{ matrix.target }}
