@@ -12,16 +12,19 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        target:
-          - kubeedge
-          - edgesite
-          - keadm
-        os:
-          - linux
-        ARM_VERSION:
-          - GOARM7
-          - GOARM8
-          - ""
+        target: ["kubeedge","edgesite","keadm"]
+        os: ["linux"]
+        ARM_VERSION: ["GOARM7","GOARM8",""]
+    outputs:
+      kubeedge-amd64: ${{ steps.hash.outputs.hash-kubeedge-amd64 }}
+      kubeedge-arm64: ${{ steps.hash.outputs.hash-kubeedge-arm64 }}
+      kubeedge-arm: ${{ steps.hash.outputs.hash-kubeedge-arm }}
+      keadm-amd64: ${{ steps.hash.outputs.hash-keadm-amd64 }}
+      keadm-arm64: ${{ steps.hash.outputs.hash-keadm-arm64 }}
+      keadm-arm: ${{ steps.hash.outputs.hash-keadm-arm }}
+      edgesite-amd64: ${{ steps.hash.outputs.hash-edgesite-amd64 }}
+      edgesite-arm64: ${{ steps.hash.outputs.hash-edgesite-arm64 }}
+      edgesite-arm: ${{ steps.hash.outputs.hash-edgesite-arm }}
     steps:
       - name: checkout code
         uses: actions/checkout@v3
@@ -42,21 +45,9 @@ jobs:
         id: hash
         run: |
           cp _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.tar.gz .
-          sha256sum ${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch}}.tar.gz >> SHA256SUM-${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.md
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.tar.gz
-          path: _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.tar.gz
-          if-no-files-found: error
-          retention-days: 5
-      - name: Upload SHA256SUM
-        uses: actions/upload-artifact@v3
-        with:
-          name: SHA256SUM-${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.md
-          path: SHA256SUM-${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.md
-          if-no-files-found: error
-          retention-days: 5
+          echo "hash-${{ matrix.target }}-${{ env.output_arch }}=$( \
+                      sha256sum ${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch}}.tar.gz | base64 -w0 \
+                    )" >> "$GITHUB_OUTPUT"
       - name: Uploading assets...
         if: ${{ !env.ACT }}
         uses: softprops/action-gh-release@v1
@@ -65,34 +56,28 @@ jobs:
             _output/release/${{ github.ref_name }}/${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.tar.gz
             _output/release/${{ github.ref_name }}/checksum_${{ matrix.target }}-${{ github.ref_name }}-${{ matrix.os }}-${{ env.output_arch }}.tar.gz.txt
 
-  build-hash:
-    name: build base64 subjects for provenance
-    outputs:
-      hashes: ${{ steps.hash.outputs.hashes }}
-    runs-on: ubuntu-18.04
+  combine_hashes:
     needs: [release-assests]
+    outputs:
+      hashes: ${{ steps.hashes.outputs.hashes }}
+    env:
+      HASHES: ${{ toJSON(needs.release-assests.outputs) }}
     steps:
-      # Download all artifacts to specify working directory
-      - uses: actions/download-artifact@v3
-        with:
-          path: ${{ github.workspace }}/slsa/artifacts
-      - name: build hash
-        id: hash
+      - id: hashes
         run: |
-          cp  `find ${{ github.workspace }}/slsa/artifacts -mindepth 2 -type f` .
-          cat SHA256SUM-*.md >> SHA256SUM.md
-          echo "::set-output name=hashes::$(cat SHA256SUM.md | base64 -w0)"
+          echo "$HASHES" | jq -r '.[] | @base64d' | sed "/^$/d" > hashes.txt
+          echo "hashes=$(cat hashes.txt | base64 -w0)" >> "$GITHUB_OUTPUT"
 
   # This step calls the generic workflow to generate provenance.
   provenance:
-    needs: [build-hash]
+    needs: [combine_hashes]
     permissions:
       actions: read
       id-token: write
       contents: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.2.1
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.2.2
     with:
-      base64-subjects: "${{ needs.build-hash.outputs.hashes }}"
+      base64-subjects: "${{ needs.combine_hashes.outputs.hashes }}"
       # Upload provenance to a new release
       upload-assets: true
 
