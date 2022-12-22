@@ -49,8 +49,8 @@ func (l *ContainerLogsConnection) SetEdgePeerDone() {
 	select {
 	case <-l.closeChan:
 		return
-	default:
-		l.edgePeerStop <- struct{}{}
+	case l.EdgePeerDone() <- struct{}{}:
+		klog.V(6).Infof("success send channel deleting connection with messageID %v", l.MessageID)
 	}
 }
 
