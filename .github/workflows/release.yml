@@ -147,10 +147,10 @@ jobs:
       id-token: write # for creating OIDC tokens for signing.
       packages: write # for uploading attestations.
     if: startsWith(github.ref, 'refs/tags/')
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@main
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@1.4.0
     with:
       image: vincentgoat/${{ matrix.target }}
+      registry-username: ${{ vars.DOCKERHUB_USER_NAME }}
       digest: ${{ needs.publish-image-to-dockerhub.outputs[format('hash-digest-{0}', matrix.target)] }}
     secrets:
       registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
-      registry-username: ${{ secrets.DOCKERHUB_USER_NAME }}
