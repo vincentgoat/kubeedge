@@ -23,6 +23,7 @@ CRD_OUTPUTS=build/crds
 DEVICES_VERSION=v1alpha2
 OPERATIONS_VERSION=v1alpha1
 RELIABLESYNCS_VERSION=v1alpha1
+ACCESSMIXER_VERSION=v1alpha1
 APPS_VERSION=v1alpha1
 HELM_CRDS_DIR=manifests/charts/cloudcore/crds
 ROUTER_DIR=build/crds/router
@@ -44,6 +45,9 @@ while [ $# -gt 0 ]; do
       ;;
     --OPERATIONS_VERSION=*)
       OPERATIONS_VERSION="${1#*=}"
+      ;;
+    --ACCESSMIXER_VERSION=*)
+      ACCESSMIXER_VERSION="${1#*=}"
       ;;
     --RELIABLESYNCS_VERSION=*)
       RELIABLESYNCS_VERSION="${1#*=}"
@@ -84,6 +88,7 @@ function :copy:to:destination {
   mkdir -p ${CRD_OUTPUTS}/devices
   mkdir -p ${CRD_OUTPUTS}/reliablesyncs
   mkdir -p ${CRD_OUTPUTS}/apps
+  mkdir -p ${CRD_OUTPUTS}/policy
 
   for entry in `ls /tmp/crds/*.yaml`; do
       CRD_NAME=$(echo ${entry} | cut -d'.' -f3 | cut -d'_' -f2)
@@ -96,6 +101,10 @@ function :copy:to:destination {
           CRD_NAME=$(remove_suffix_s "$CRD_NAME")
           cp -v ${entry} ${CRD_OUTPUTS}/apps/apps_${APPS_VERSION}_${CRD_NAME}.yaml
           cp -v ${entry} ${HELM_CRDS_DIR}/apps_${APPS_VERSION}_${CRD_NAME}.yaml
+      elif [ "$CRD_NAME" == "accessmixers" ]; then
+          CRD_NAME=$(remove_suffix_s "$CRD_NAME")
+          cp -v ${entry} ${CRD_OUTPUTS}/policy/policy_${ACCESSMIXER_VERSION}_${CRD_NAME}.yaml
+          cp -v ${entry} ${HELM_CRDS_DIR}/policy_${ACCESSMIXER_VERSION}_${CRD_NAME}.yaml
       elif [ "$CRD_NAME" == "clusterobjectsyncs" ]; then
           cp -v ${entry} ${CRD_OUTPUTS}/reliablesyncs/cluster_objectsync_${RELIABLESYNCS_VERSION}.yaml
           cp -v ${entry} ${HELM_CRDS_DIR}/cluster_objectsync_${RELIABLESYNCS_VERSION}.yaml
