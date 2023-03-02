@@ -7,6 +7,8 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	policyv1alpha1 "github.com/kubeedge/kubeedge/pkg/apis/policy/v1alpha1"
 )
 
 var module = `
@@ -37,7 +39,56 @@ var module = `
 		}
 	`
 
+var initAccessMixer = policyv1alpha1.AccessMixer{
+	ObjectMeta: metav1.ObjectMeta{
+		Name: "test",
+	},
+	Spec: policyv1alpha1.AccessMixerSpec{
+		ServiceAccount: "test-sa",
+		AccessRoleBinding: []policyv1alpha1.AccessRoleBinding{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rb",
+					Namespace: "default",
+				},
+				Subjects: []rbacv1.Subject{
+					{
+						Kind: "ServiceAccount",
+						Name: "test-sa",
+					},
+				},
+				RolePolicy: policyv1alpha1.RolePolicy{
+					TypeMeta: metav1.TypeMeta{
+						Kind: "Role",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-role",
+						Namespace: "default",
+					},
+					Rules: []rbacv1.PolicyRule{
+						{
+							APIGroups: []string{"*"},
+							Resources: []string{"pods", "nodes"},
+							Verbs:     []string{"get", "list"},
+						},
+					},
+				},
+			},
+		},
+	},
+}
+
 func TestRbacPolicy(t *testing.T) {
+	var updateRb1 = []rbacv1.Subject{
+		{
+			Kind: "ServiceAccount",
+			Name: "test-sa",
+		},
+		{
+			Kind: "ServiceAccount",
+			Name: "test-sa1",
+		},
+	}
 	cases := map[string]struct {
 		roleBinding rbacv1.RoleBinding
 		want        rbacv1.RoleBinding
@@ -45,18 +96,13 @@ func TestRbacPolicy(t *testing.T) {
 		"update-rb": {
 			roleBinding: rbacv1.RoleBinding{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test",
+					Name:      "test-rb",
 					Namespace: "default",
 				},
-				Subjects: []rbacv1.Subject{
-					{ // This is the subject we want to update
-						Kind: "User",
-						Name: "test",
-					},
-				},
+				Subjects: updateRb1,
 				RoleRef: rbacv1.RoleRef{
-					Kind: "ClusterRole",
-					Name: "test",
+					Kind: "Role",
+					Name: "test-role",
 				},
 			},
 			want: rbacv1.RoleBinding{},
