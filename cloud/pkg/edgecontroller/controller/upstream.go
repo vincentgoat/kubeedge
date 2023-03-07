@@ -55,6 +55,7 @@ import (
 	"github.com/kubeedge/kubeedge/cloud/pkg/devicecontroller/controller"
 	"github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/constants"
 	"github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/types"
+	"github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/utils"
 	routerrule "github.com/kubeedge/kubeedge/cloud/pkg/router/rule"
 	common "github.com/kubeedge/kubeedge/common/constants"
 	edgeapi "github.com/kubeedge/kubeedge/common/types"
@@ -124,11 +125,12 @@ type UpstreamController struct {
 	queryLeaseChan            chan model.Message
 
 	// lister
-	podLister       corelisters.PodLister
-	configMapLister corelisters.ConfigMapLister
-	secretLister    corelisters.SecretLister
-	nodeLister      corelisters.NodeLister
-	leaseLister     coordinationlisters.LeaseLister
+	podLister        corelisters.PodLister
+	configMapLister  corelisters.ConfigMapLister
+	secretLister     corelisters.SecretLister
+	nodeLister       corelisters.NodeLister
+	leaseLister      coordinationlisters.LeaseLister
+	authPolicyLister types.AuthPolicyResolver
 }
 
 // Start UpstreamController
@@ -1232,6 +1234,18 @@ func (uc *UpstreamController) queryLease() {
 	}
 }
 
+func (uc *UpstreamController) queryAuthPolicy() {
+	for {
+		select {
+		case <-beehiveContext.Done():
+			klog.Warning("stop queryConfigMap")
+			return
+		case msg := <-uc.authPolicyChan:
+			queryInner(uc, msg, model.ResourceTypeConfigmap)
+		}
+	}
+}
+
 func (uc *UpstreamController) unmarshalPodStatusMessage(msg model.Message) (ns string, podStatuses []edgeapi.PodStatusRequest) {
 	ns, err := messagelayer.GetNamespace(msg)
 	if err != nil {
@@ -1353,6 +1367,46 @@ func (uc *UpstreamController) nodeMsgResponse(nodeName, namespace, content strin
 	}
 }
 
+/*func (uc *UpstreamController) getRuleThroughServiceAccount(namespace, serviceAccount string) (*rbacv1.PolicyRule, error) {
+	roleBindingList, err := uc.authPolicyLister.RoleBindingLister.ListRoleBindings(namespace)
+	if err != nil {
+		return nil, fmt.Errorf("list roleBindings failed with error: %s", err)
+	}
+
+	var rstRule []rbacv1.PolicyRule
+	for _, roleBinding := range roleBindingList {
+		for _, subject := range roleBinding.Subjects {
+			if subject.Name != serviceAccount {
+				continue
+			}
+			role, err := uc.authPolicyLister.RoleGetter.GetRole(namespace, roleBinding.RoleRef.Name)
+			if err != nil {
+				return nil, fmt.Errorf("get role failed with error: %s", err)
+			}
+			rstRule = append(rstRule, role.Rules...)
+		}
+	}
+	crbList, err := uc.authPolicyLister.ClusterRoleBindingLister.ListClusterRoleBindings()
+	if err != nil {
+		return nil, fmt.Errorf("list clusterRoleBindings failed with error: %s", err)
+	}
+	for _, crb := range crbList {
+		for _, subject := range crb.Subjects {
+			if subject.Name != serviceAccount {
+				continue
+			}
+
+			role, err := uc.authPolicyLister.RoleGetter.GetClusterRole(crb.RoleRef.Name)
+			role, err := uc.authPolicyLister.RoleGetter.GetRole(namespace, roleBinding.RoleRef.Name)
+			if err != nil {
+				return nil, fmt.Errorf("get role failed with error: %s", err)
+			}
+			rstRule = append(rstRule, role.Rules...)
+		}
+	}
+	return nil, fmt.Errorf("can not find roleBinding for serviceAccount: %s", serviceAccount)
+}*/
+
 // NewUpstreamController create UpstreamController from config
 func NewUpstreamController(config *v1alpha1.EdgeController, factory k8sinformer.SharedInformerFactory) (*UpstreamController, error) {
 	uc := &UpstreamController{
@@ -1366,7 +1420,12 @@ func NewUpstreamController(config *v1alpha1.EdgeController, factory k8sinformer.
 	uc.configMapLister = factory.Core().V1().ConfigMaps().Lister()
 	uc.secretLister = factory.Core().V1().Secrets().Lister()
 	uc.leaseLister = factory.Coordination().V1().Leases().Lister()
-
+	uc.authPolicyLister = types.AuthPolicyResolver{
+		RoleGetter:               &utils.RoleGetter{Lister: factory.Rbac().V1().Roles().Lister()},
+		RoleBindingLister:        &utils.RoleBindingLister{Lister: factory.Rbac().V1().RoleBindings().Lister()},
+		ClusterRoleGetter:        &utils.ClusterRoleGetter{Lister: factory.Rbac().V1().ClusterRoles().Lister()},
+		ClusterRoleBindingLister: &utils.ClusterRoleBindingLister{Lister: factory.Rbac().V1().ClusterRoleBindings().Lister()},
+	}
 	uc.nodeStatusChan = make(chan model.Message, config.Buffer.UpdateNodeStatus)
 	uc.podStatusChan = make(chan model.Message, config.Buffer.UpdatePodStatus)
 	uc.configMapChan = make(chan model.Message, config.Buffer.QueryConfigMap)
