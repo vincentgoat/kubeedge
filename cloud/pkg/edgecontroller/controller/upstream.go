@@ -41,6 +41,7 @@ import (
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	apimachineryType "k8s.io/apimachinery/pkg/types"
+	"k8s.io/apiserver/pkg/authentication/user"
 	k8sinformer "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	coordinationlisters "k8s.io/client-go/listers/coordination/v1"
@@ -123,14 +124,15 @@ type UpstreamController struct {
 	ruleStatusChan            chan model.Message
 	createLeaseChan           chan model.Message
 	queryLeaseChan            chan model.Message
+	authPolicyChan            chan model.Message
 
 	// lister
-	podLister        corelisters.PodLister
-	configMapLister  corelisters.ConfigMapLister
-	secretLister     corelisters.SecretLister
-	nodeLister       corelisters.NodeLister
-	leaseLister      coordinationlisters.LeaseLister
-	authPolicyLister types.AuthPolicyResolver
+	podLister          corelisters.PodLister
+	configMapLister    corelisters.ConfigMapLister
+	secretLister       corelisters.SecretLister
+	nodeLister         corelisters.NodeLister
+	leaseLister        coordinationlisters.LeaseLister
+	authPolicyResolver utils.AuthPolicyResolver
 }
 
 // Start UpstreamController
@@ -189,6 +191,9 @@ func (uc *UpstreamController) Start() error {
 	}
 	for i := 0; i < int(uc.config.Load.UpdateRuleStatusWorkers); i++ {
 		go uc.updateRuleStatus()
+	}
+	for i := 0; i < int(uc.config.Load.AuthPolicyWorkers); i++ {
+		go uc.queryAuthPolicy()
 	}
 	return nil
 }
@@ -258,6 +263,8 @@ func (uc *UpstreamController) dispatchMessage() {
 			}
 		case model.ResourceTypeRuleStatus:
 			uc.ruleStatusChan <- msg
+		case model.ResourceTypeAuthPolicy:
+			uc.authPolicyChan <- msg
 		case model.ResourceTypeLease:
 			switch msg.GetOperation() {
 			case model.InsertOperation, model.UpdateOperation:
@@ -1234,18 +1241,6 @@ func (uc *UpstreamController) queryLease() {
 	}
 }
 
-func (uc *UpstreamController) queryAuthPolicy() {
-	for {
-		select {
-		case <-beehiveContext.Done():
-			klog.Warning("stop queryConfigMap")
-			return
-		case msg := <-uc.authPolicyChan:
-			queryInner(uc, msg, model.ResourceTypeConfigmap)
-		}
-	}
-}
-
 func (uc *UpstreamController) unmarshalPodStatusMessage(msg model.Message) (ns string, podStatuses []edgeapi.PodStatusRequest) {
 	ns, err := messagelayer.GetNamespace(msg)
 	if err != nil {
@@ -1367,45 +1362,60 @@ func (uc *UpstreamController) nodeMsgResponse(nodeName, namespace, content strin
 	}
 }
 
-/*func (uc *UpstreamController) getRuleThroughServiceAccount(namespace, serviceAccount string) (*rbacv1.PolicyRule, error) {
-	roleBindingList, err := uc.authPolicyLister.RoleBindingLister.ListRoleBindings(namespace)
+func (uc *UpstreamController) getAuthPolicyPerServiceAccount(msg model.Message) {
+	var err error
+	var namespace string
+	defer func() {
+		if err == nil {
+			return
+		}
+		resMsg := model.NewMessage(msg.GetID()).
+			FillBody(err).
+			BuildRouter(modules.EdgeControllerModuleName, constants.GroupResource, msg.GetResource(), model.ResponseOperation)
+		err = uc.messageLayer.Response(*resMsg)
+		if err != nil {
+			klog.Warningf("message: %s process failure, response failed with error: %s", msg.GetID(), err)
+		}
+	}()
+	namespace, err = messagelayer.GetNamespace(msg)
 	if err != nil {
-		return nil, fmt.Errorf("list roleBindings failed with error: %s", err)
+		klog.Error("message: %s process failure, get namespace failed with error: %s", msg.GetID(), err)
+		return
 	}
+	userInfo, ok := msg.GetContent().(user.Info)
+	if !ok {
+		err = fmt.Errorf("message: %s process failure, get user info failed", msg.GetID())
+		return
+	}
+	var ruleVisitor = &utils.AuthorizingVisitor{AuthPolicy: []types.AuthPolicy{}}
+	uc.authPolicyResolver.VisitRulesFor(userInfo, namespace, ruleVisitor.Visit)
+	if ruleVisitor.Error != nil {
+		err = fmt.Errorf("message: %s process failure, get auth policy failed with error: %s", msg.GetID(), ruleVisitor.Error)
+		klog.Errorf(err.Error())
+		return
+	}
+	resMsg := model.NewMessage(msg.GetID()).
+		FillBody(ruleVisitor.AuthPolicy).
+		BuildRouter(modules.EdgeControllerModuleName, constants.GroupResource, msg.GetResource(), model.ResponseOperation)
+	if rspErr := uc.messageLayer.Response(*resMsg); rspErr != nil {
+		klog.Warningf("Response message: %s failed, response failed with error: %v", msg.GetID(), rspErr)
+	}
+	return
+}
 
-	var rstRule []rbacv1.PolicyRule
-	for _, roleBinding := range roleBindingList {
-		for _, subject := range roleBinding.Subjects {
-			if subject.Name != serviceAccount {
-				continue
-			}
-			role, err := uc.authPolicyLister.RoleGetter.GetRole(namespace, roleBinding.RoleRef.Name)
-			if err != nil {
-				return nil, fmt.Errorf("get role failed with error: %s", err)
-			}
-			rstRule = append(rstRule, role.Rules...)
+func (uc *UpstreamController) queryAuthPolicy() {
+	for {
+		select {
+		case <-beehiveContext.Done():
+			klog.Warning("stop queryAuthPolicy")
+			return
+		case msg := <-uc.authPolicyChan:
+			klog.V(5).Infof("message %s, operation is : %s , and resource is %s", msg.GetID(), msg.GetOperation(), msg.GetResource())
+			uc.getAuthPolicyPerServiceAccount(msg)
+			klog.V(4).Infof("message: %s process successfully", msg.GetID())
 		}
 	}
-	crbList, err := uc.authPolicyLister.ClusterRoleBindingLister.ListClusterRoleBindings()
-	if err != nil {
-		return nil, fmt.Errorf("list clusterRoleBindings failed with error: %s", err)
-	}
-	for _, crb := range crbList {
-		for _, subject := range crb.Subjects {
-			if subject.Name != serviceAccount {
-				continue
-			}
-
-			role, err := uc.authPolicyLister.RoleGetter.GetClusterRole(crb.RoleRef.Name)
-			role, err := uc.authPolicyLister.RoleGetter.GetRole(namespace, roleBinding.RoleRef.Name)
-			if err != nil {
-				return nil, fmt.Errorf("get role failed with error: %s", err)
-			}
-			rstRule = append(rstRule, role.Rules...)
-		}
-	}
-	return nil, fmt.Errorf("can not find roleBinding for serviceAccount: %s", serviceAccount)
-}*/
+}
 
 // NewUpstreamController create UpstreamController from config
 func NewUpstreamController(config *v1alpha1.EdgeController, factory k8sinformer.SharedInformerFactory) (*UpstreamController, error) {
@@ -1420,7 +1430,7 @@ func NewUpstreamController(config *v1alpha1.EdgeController, factory k8sinformer.
 	uc.configMapLister = factory.Core().V1().ConfigMaps().Lister()
 	uc.secretLister = factory.Core().V1().Secrets().Lister()
 	uc.leaseLister = factory.Coordination().V1().Leases().Lister()
-	uc.authPolicyLister = types.AuthPolicyResolver{
+	uc.authPolicyResolver = utils.AuthPolicyResolver{
 		RoleGetter:               &utils.RoleGetter{Lister: factory.Rbac().V1().Roles().Lister()},
 		RoleBindingLister:        &utils.RoleBindingLister{Lister: factory.Rbac().V1().RoleBindings().Lister()},
 		ClusterRoleGetter:        &utils.ClusterRoleGetter{Lister: factory.Rbac().V1().ClusterRoles().Lister()},

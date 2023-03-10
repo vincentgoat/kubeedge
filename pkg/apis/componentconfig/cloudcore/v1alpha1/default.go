@@ -163,6 +163,7 @@ func getDefaultEdgeControllerLoad(nodeLimit int32) *EdgeControllerLoad {
 		QueryLeaseWorkers:                 constants.DefaultQueryLeaseWorkers,
 		UpdateRuleStatusWorkers:           constants.DefaultUpdateRuleStatusWorkers,
 		ServiceAccountTokenWorkers:        constants.DefaultServiceAccountTokenWorkers,
+		AuthPolicyWorkers:                 constants.DefaultAuthPolicyWorkers,
 	}
 }
 

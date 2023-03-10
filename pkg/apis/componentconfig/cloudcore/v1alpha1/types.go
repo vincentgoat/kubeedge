@@ -340,6 +340,9 @@ type EdgeControllerLoad struct {
 	// ServiceAccountTokenWorkers indicates the load of service account token
 	// default 4
 	ServiceAccountTokenWorkers int32 `json:"ServiceAccountTokenWorkers,omitempty"`
+	// AuthPolicyWorkers indicates the load of auth policy for authorization on the edge node
+	// default 100
+	AuthPolicyWorkers int32 `json:"AuthPolicyWorkers,omitempty"`
 }
 
 // DeviceController indicates the device controller

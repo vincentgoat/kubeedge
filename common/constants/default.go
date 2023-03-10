@@ -103,6 +103,7 @@ const (
 	DefaultUpdateRuleStatusWorkers           = 4
 	DefaultQueryLeaseWorkers                 = 100
 	DefaultServiceAccountTokenWorkers        = 100
+	DefaultAuthPolicyWorkers                 = 100
 
 	DefaultUpdatePodStatusBuffer            = 1024
 	DefaultUpdateNodeStatusBuffer           = 1024
