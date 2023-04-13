@@ -175,6 +175,9 @@ func (md *messageDispatcher) DispatchUpstream(message *beehivemodel.Message, inf
 			klog.Errorf("node %s receive message ack err: %v", info.NodeID, err)
 		}
 
+	case message.GetOperation() == beehivemodel.ResponseErrorOperation:
+		klog.Errorf("node %s receive message %s error response: %v", info.NodeID, message.GetID(), message.GetContent())
+
 	case message.GetOperation() == beehivemodel.UploadOperation && message.GetGroup() == modules.UserGroup:
 		message.Router.Resource = fmt.Sprintf("node/%s/%s", info.NodeID, message.Router.Resource)
 		beehivecontext.Send(modules.RouterModuleName, *message)

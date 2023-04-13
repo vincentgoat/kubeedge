@@ -12,7 +12,7 @@ const (
 	DefaultContextSendModuleName = "cloudhub"
 
 	// NodeName is for the clearer log of cloudcore.
-	NodeName = "NodeName"
+	NodeName = "NodeList"
 
 	ProjectName = "KubeEdge"
 

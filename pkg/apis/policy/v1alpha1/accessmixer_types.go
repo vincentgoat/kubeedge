@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	rbac "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
@@ -35,6 +36,16 @@ type AccessMixer struct {
 	// Spec represents the specification of rbac.
 	// +required
 	Spec AccessMixerSpec `json:"spec,omitempty"`
+
+	// Status represents the node list which store the rules.
+	// +optional
+	Status AccessMixerStatus `json:"status,omitempty"`
+}
+
+// AccessMixerStatus defines the observed state of AccessMixer
+type AccessMixerStatus struct {
+	// NodeList represents the node name which store the rules.
+	NodeList []string `json:"nodeList,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -50,7 +61,7 @@ type AccessMixerList struct {
 // AccessMixerSpec defines the desired state of AccessMixerSpec
 type AccessMixerSpec struct {
 	// ServiceAccount is one-to-one corresponding relations with the accessmixer.
-	ServiceAccount string `json:"serviceAccount,omitempty"`
+	ServiceAccount corev1.ServiceAccount `json:"serviceAccount,omitempty"`
 	// AccessRoleBinding represents rbac rolebinding plus detailed role info.
 	AccessRoleBinding []AccessRoleBinding `json:"accessRoleBinding,omitempty"`
 	// AccessClusterRoleBinding represents rbac ClusterRoleBinding plus detailed ClusterRole info.
@@ -61,30 +72,16 @@ type AccessMixerSpec struct {
 
 // AccessRoleBinding represents rbac rolebinding plus detailed role info.
 type AccessRoleBinding struct {
-	metav1.TypeMeta `json:",inline"`
-	// Standard object's metadata.
-	// +optional
-	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
-
-	// Subjects holds references to the objects the role applies to.
-	// +optional
-	Subjects []rbac.Subject `json:"subjects,omitempty" protobuf:"bytes,2,rep,name=subjects"`
+	rbac.RoleBinding `json:",inline"`
 	// RolePolicy contains both role and clusterrole.
-	RolePolicy `json:",inline"`
+	RolePolicy RolePolicy `json:"rolePolicy,omitempty" protobuf:"bytes,1,opt,name=rolePolicy"`
 }
 
 // AccessClusterRoleBinding represents rbac ClusterRoleBinding plus detailed ClusterRole info.
 type AccessClusterRoleBinding struct {
-	metav1.TypeMeta `json:",inline"`
-	// Standard object's metadata.
-	// +optional
-	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
-
-	// Subjects holds references to the objects the role applies to.
-	// +optional
-	Subjects []rbac.Subject `json:"subjects,omitempty" protobuf:"bytes,2,rep,name=subjects"`
+	rbac.ClusterRoleBinding `json:",inline"`
 	// RolePolicy contains both role and clusterrole.
-	RolePolicy RolePolicy `json:"rolePolicy,omitempty" protobuf:"bytes,3,rep,name=rolePolicy"`
+	RolePolicy RolePolicy `json:"rolePolicy,omitempty" protobuf:"bytes,1,opt,name=rolePolicy"`
 }
 
 // RolePolicy contains both role and clusterrole.
