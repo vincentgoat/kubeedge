@@ -119,7 +119,7 @@ func (a *Application) Identifier() string {
 }
 
 func (a *Application) String() string {
-	return fmt.Sprintf("(NodeName=%v;Key=%v;Verb=%v;Status=%v;Reason=%v)", a.Nodename, a.Key, a.Verb, a.Status, a.Reason)
+	return fmt.Sprintf("(NodeList=%v;Key=%v;Verb=%v;Status=%v;Reason=%v)", a.Nodename, a.Key, a.Verb, a.Status, a.Reason)
 }
 
 func (a *Application) ReqContent() interface{} {

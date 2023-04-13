@@ -16,6 +16,8 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilwaitgroup "k8s.io/apimachinery/pkg/util/waitgroup"
+	"k8s.io/apiserver/pkg/authentication/authenticator"
+	"k8s.io/apiserver/pkg/authorization/authorizer"
 	genericapifilters "k8s.io/apiserver/pkg/endpoints/filters"
 	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
@@ -23,6 +25,7 @@ import (
 	genericfilters "k8s.io/apiserver/pkg/server/filters"
 	certutil "k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/plugin/pkg/auth/authorizer/rbac"
 
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
 	commontypes "github.com/kubeedge/kubeedge/common/types"
@@ -34,6 +37,12 @@ import (
 	kefeatures "github.com/kubeedge/kubeedge/pkg/features"
 )
 
+type AuthInterface interface {
+	authenticator.Request
+	authorizer.RequestAttributesGetter
+	authorizer.Authorizer
+}
+
 // MetaServer is simplification of server.GenericAPIServer
 type MetaServer struct {
 	HandlerChainWaitGroup *utilwaitgroup.SafeWaitGroup
@@ -42,6 +51,12 @@ type MetaServer struct {
 	Handler               http.Handler
 	NegotiatedSerializer  runtime.NegotiatedSerializer
 	Factory               *handlerfactory.Factory
+	Auth                  AuthInterface
+}
+
+func BuildAuth() AuthInterface {
+	authorizer := rbac.New()
+	return &Auth{}
 }
 
 func NewMetaServer() *MetaServer {
