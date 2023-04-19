@@ -9,11 +9,17 @@ import (
 
 	"gopkg.in/square/go-jose.v2/jwt"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
+	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/serviceaccount"
 
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/constants"
 )
+
+type AuthInterface interface {
+	authenticator.Request
+	authorizer.Authorizer
+}
 
 type jwtTokenAuthenticator struct {
 	indexer      cache.Indexer
@@ -62,7 +68,7 @@ func (j *jwtTokenAuthenticator) AuthenticateToken(ctx context.Context, tokenData
 	if err := parseSigned(tokenData, public, private); err != nil {
 		return nil, false, err
 	}
-
+	// auth token is existing in cache
 	tokenReqs, err := j.indexer.ByIndex(constants.TokenRequestIndexer, tokenData)
 	if err != nil || len(tokenReqs) != 1 {
 		return nil, false, fmt.Errorf("tokenData not found when authenticating")

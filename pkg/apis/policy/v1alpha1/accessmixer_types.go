@@ -72,16 +72,18 @@ type AccessMixerSpec struct {
 
 // AccessRoleBinding represents rbac rolebinding plus detailed role info.
 type AccessRoleBinding struct {
-	rbac.RoleBinding `json:",inline"`
+	// RoleBinding represents rbac rolebinding.
+	RoleBinding rbac.RoleBinding `json:"roleBinding,omitempty" protobuf:"bytes,1,opt,name=roleBinding"`
 	// RolePolicy contains both role and clusterrole.
-	RolePolicy RolePolicy `json:"rolePolicy,omitempty" protobuf:"bytes,1,opt,name=rolePolicy"`
+	RolePolicy RolePolicy `json:"rolePolicy,omitempty" protobuf:"bytes,2,opt,name=rolePolicy"`
 }
 
 // AccessClusterRoleBinding represents rbac ClusterRoleBinding plus detailed ClusterRole info.
 type AccessClusterRoleBinding struct {
-	rbac.ClusterRoleBinding `json:",inline"`
+	// ClusterRoleBinding represents rbac ClusterRoleBinding.
+	ClusterRoleBinding rbac.ClusterRoleBinding `json:"clusterRoleBinding,omitempty" protobuf:"bytes,1,opt,name=clusterRoleBinding"`
 	// RolePolicy contains both role and clusterrole.
-	RolePolicy RolePolicy `json:"rolePolicy,omitempty" protobuf:"bytes,1,opt,name=rolePolicy"`
+	RolePolicy RolePolicy `json:"rolePolicy,omitempty" protobuf:"bytes,2,opt,name=rolePolicy"`
 }
 
 // RolePolicy contains both role and clusterrole.

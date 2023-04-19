@@ -8,7 +8,6 @@ import (
 
 	"gopkg.in/square/go-jose.v2"
 	"gopkg.in/square/go-jose.v2/jwt"
-	"k8s.io/apiserver/pkg/audit"
 	apiserverserviceaccount "k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/serviceaccount"
@@ -93,11 +92,11 @@ func (v *validator) Validate(ctx context.Context, _ string, public *jwt.Claims, 
 		secret, err := v.getter.GetSecret(namespace, secref.Name)
 		if err != nil {
 			klog.V(4).Infof("Could not retrieve bound secret %s/%s for service account %s/%s: %v", namespace, secref.Name, namespace, saref.Name, err)
-			return nil, errors.New("service account token has been invalidated")
+			return nil, fmt.Errorf("service account token has been invalidated")
 		}
 		if secret.DeletionTimestamp != nil && secret.DeletionTimestamp.Time.Before(invalidIfDeletedBefore) {
 			klog.V(4).Infof("Bound secret is deleted and awaiting removal: %s/%s for service account %s/%s", namespace, secref.Name, namespace, saref.Name)
-			return nil, errors.New("service account token has been invalidated")
+			return nil, fmt.Errorf("service account token has been invalidated")
 		}
 		if secref.UID != string(secret.UID) {
 			klog.V(4).Infof("Secret UID no longer matches %s/%s: %q != %q", namespace, secref.Name, string(secret.UID), secref.UID)
@@ -123,19 +122,6 @@ func (v *validator) Validate(ctx context.Context, _ string, public *jwt.Claims, 
 		}
 		podName = podref.Name
 		podUID = podref.UID
-	}
-
-	// Check special 'warnafter' field for projected service account token transition.
-	warnafter := private.Kubernetes.WarnAfter
-	if warnafter != 0 {
-		if nowTime.After(warnafter.Time()) {
-			secondsAfterWarn := nowTime.Unix() - warnafter.Time().Unix()
-			auditInfo := fmt.Sprintf("subject: %s, seconds after warning threshold: %d", public.Subject, secondsAfterWarn)
-			audit.AddAuditAnnotation(ctx, "authentication.k8s.io/stale-token", auditInfo)
-			staleTokensTotal.WithContext(ctx).Inc()
-		} else {
-			validTokensTotal.WithContext(ctx).Inc()
-		}
 	}
 
 	return &apiserverserviceaccount.ServiceAccountInfo{

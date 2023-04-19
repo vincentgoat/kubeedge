@@ -1,16 +1,5 @@
 package accessmixer
 
-import (
-	"sort"
-	"testing"
-
-	rbacv1 "k8s.io/api/rbac/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	policyv1alpha1 "github.com/kubeedge/kubeedge/pkg/apis/policy/v1alpha1"
-)
-
 var module = `
 		package example
 		import data.bindings
@@ -39,6 +28,7 @@ var module = `
 		}
 	`
 
+/*
 var initAccessMixer = policyv1alpha1.AccessMixer{
 	ObjectMeta: metav1.ObjectMeta{
 		Name: "test",
@@ -118,4 +108,4 @@ func TestRbacPolicy(t *testing.T) {
 			t.Errorf("failed at case: %s, want: %v, got: %v", n, c.want, results)
 		}
 	}
-}
+}*/

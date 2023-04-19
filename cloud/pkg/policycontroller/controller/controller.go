@@ -404,10 +404,10 @@ func (c *Controller) syncRules(ctx context.Context, am *policyv1alpha1.AccessMix
 		c.send2Edge(am, deleteNodes, model.DeleteOperation)
 	}
 	sort.Slice(am.Spec.AccessRoleBinding, func(i, j int) bool {
-		return am.Spec.AccessRoleBinding[i].Name < am.Spec.AccessRoleBinding[j].Name
+		return am.Spec.AccessRoleBinding[i].RoleBinding.Name < am.Spec.AccessRoleBinding[j].RoleBinding.Name
 	})
 	sort.Slice(newAm.Spec.AccessClusterRoleBinding, func(i, j int) bool {
-		return newAm.Spec.AccessClusterRoleBinding[i].Name < newAm.Spec.AccessClusterRoleBinding[j].Name
+		return newAm.Spec.AccessClusterRoleBinding[i].ClusterRoleBinding.Name < newAm.Spec.AccessClusterRoleBinding[j].ClusterRoleBinding.Name
 	})
 
 	if !compareSubjects(am.Spec.AccessClusterRoleBinding, newAm.Spec.AccessClusterRoleBinding) ||
