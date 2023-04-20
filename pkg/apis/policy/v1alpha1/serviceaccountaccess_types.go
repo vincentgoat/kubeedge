@@ -18,9 +18,9 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
-	rbac "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	runtime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/kubernetes/pkg/apis/rbac"
 )
 
 // +genclient
@@ -74,16 +74,15 @@ type AccessSpec struct {
 // AccessRoleBinding represents rbac rolebinding plus detailed role info.
 type AccessRoleBinding struct {
 	// RoleBinding represents rbac rolebinding.
-	RoleBinding rbac.RoleBinding `json:"roleBinding,omitempty" protobuf:"bytes,1,opt,name=roleBinding"`
+	RoleBinding rbac.RoleBinding `json:"roleBinding,omitempty"`
 	// Rules contains role rules.
-	Rules []rbac.PolicyRule `json:"rules,omitempty" protobuf:"bytes,2,opt,name=rules"`
+	Rules []rbac.PolicyRule `json:"rules,omitempty"`
 }
 
 // AccessClusterRoleBinding represents rbac ClusterRoleBinding plus detailed ClusterRole info.
 type AccessClusterRoleBinding struct {
 	// ClusterRoleBinding represents rbac ClusterRoleBinding.
-	ClusterRoleBinding rbac.ClusterRoleBinding `json:"clusterRoleBinding,omitempty" protobuf:"bytes,1,opt,name=clusterRoleBinding"`
+	ClusterRoleBinding rbac.ClusterRoleBinding `json:"clusterRoleBinding,omitempty"`
 	// Rules contains role rules.
-	Rules []rbac.PolicyRule `json:"rules,omitempty" protobuf:"bytes,2,opt,name=rules"`
+	Rules []rbac.PolicyRule `json:"rules,omitempty"`
 }
-

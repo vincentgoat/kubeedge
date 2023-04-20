@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	api "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/cache"
 
 	"github.com/kubeedge/beehive/pkg/core/model"
 	"github.com/kubeedge/kubeedge/edge/pkg/common/message"
@@ -28,12 +29,14 @@ type ConfigMapsInterface interface {
 type configMaps struct {
 	namespace string
 	send      SendInterface
+	indexer   cache.Indexer
 }
 
-func newConfigMaps(namespace string, s SendInterface) *configMaps {
+func newConfigMaps(namespace string, m *metaClient) *configMaps {
 	return &configMaps{
-		send:      s,
+		send:      m.send,
 		namespace: namespace,
+		indexer:   GetOrCreateIndexer(m.indexers, &api.ConfigMap{}),
 	}
 }
 
@@ -50,6 +53,9 @@ func (c *configMaps) Delete(name string) error {
 }
 
 func (c *configMaps) Get(name string) (*api.ConfigMap, error) {
+	if obj, exists, err := c.indexer.GetByKey(fmt.Sprintf("%s/%s", c.namespace, name)); err == nil && exists {
+		return obj.(*api.ConfigMap), nil
+	}
 	resource := fmt.Sprintf("%s/%s/%s", c.namespace, model.ResourceTypeConfigmap, name)
 	configMapMsg := message.BuildMsg(modules.MetaGroup, "", modules.EdgedModuleName, resource, model.QueryOperation, nil)
 	msg, err := c.send.SendSync(configMapMsg)

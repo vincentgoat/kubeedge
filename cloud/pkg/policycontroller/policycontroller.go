@@ -14,20 +14,20 @@ import (
 
 	"github.com/kubeedge/beehive/pkg/core"
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
-	"github.com/kubeedge/kubeedge/cloud/pkg/common/client"
 	"github.com/kubeedge/kubeedge/cloud/pkg/common/messagelayer"
 	"github.com/kubeedge/kubeedge/cloud/pkg/common/modules"
 	"github.com/kubeedge/kubeedge/cloud/pkg/policycontroller/controller"
 	policyv1alpha1 "github.com/kubeedge/kubeedge/pkg/apis/policy/v1alpha1"
+	kefeatures "github.com/kubeedge/kubeedge/pkg/features"
 )
 
-// policycontroller use beehive context message layer
-type policycontroller struct {
+// policyController use beehive context message layer
+type policyController struct {
 	manager manager.Manager
 	ctx     context.Context
 }
 
-var _ core.Module = (*policycontroller)(nil)
+var _ core.Module = (*policyController)(nil)
 
 var accessScheme = runtime.NewScheme()
 
@@ -68,10 +68,10 @@ func setupControllers(ctx context.Context, mgr manager.Manager) error {
 	return nil
 }
 
-func Register() {
-	var pc = &policycontroller{}
+func Register(kubeCfg *rest.Config) {
+	var pc = &policyController{}
 	pc.ctx = beehiveContext.GetContext()
-	mgr, err := NewAccessRoleControllerManager(pc.ctx, client.KubeConfig)
+	mgr, err := NewAccessRoleControllerManager(pc.ctx, kubeCfg)
 	if err != nil {
 		klog.Fatalf("failed to create controller manager, %v", err)
 	}
@@ -80,22 +80,25 @@ func Register() {
 }
 
 // Name of controller
-func (pc *policycontroller) Name() string {
+func (pc *policyController) Name() string {
 	return modules.PolicyControllerModuleName
 }
 
 // Group of controller
-func (pc *policycontroller) Group() string {
+func (pc *policyController) Group() string {
 	return modules.PolicyControllerGroupName
 }
 
 // Enable indicates whether enable this module
-func (pc *policycontroller) Enable() bool {
+func (pc *policyController) Enable() bool {
+	if !kefeatures.DefaultFeatureGate.Enabled(kefeatures.RequireAuthorization) {
+		return false
+	}
 	return true
 }
 
 // Start controller
-func (pc *policycontroller) Start() {
+func (pc *policyController) Start() {
 	// mgr.Start will block until the manager has stopped
 	if err := pc.manager.Start(pc.ctx); err != nil {
 		klog.Fatalf("failed to start controller manager, %v", err)

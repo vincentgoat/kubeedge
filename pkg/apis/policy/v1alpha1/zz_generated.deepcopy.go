@@ -22,7 +22,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1 "k8s.io/api/rbac/v1"
+	"k8s.io/kubernetes/pkg/apis/rbac"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -32,7 +32,7 @@ func (in *AccessClusterRoleBinding) DeepCopyInto(out *AccessClusterRoleBinding) 
 	in.ClusterRoleBinding.DeepCopyInto(&out.ClusterRoleBinding)
 	if in.Rules != nil {
 		in, out := &in.Rules, &out.Rules
-		*out = make([]v1.PolicyRule, len(*in))
+		*out = make([]rbac.PolicyRule, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -56,7 +56,7 @@ func (in *AccessRoleBinding) DeepCopyInto(out *AccessRoleBinding) {
 	in.RoleBinding.DeepCopyInto(&out.RoleBinding)
 	if in.Rules != nil {
 		in, out := &in.Rules, &out.Rules
-		*out = make([]v1.PolicyRule, len(*in))
+		*out = make([]rbac.PolicyRule, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}

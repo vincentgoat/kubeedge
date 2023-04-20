@@ -13,6 +13,9 @@ import (
 	"k8s.io/kubernetes/pkg/serviceaccount"
 )
 
+// time.Now stubbed out to allow testing
+var now = time.Now
+
 type privateClaims struct {
 	Kubernetes kubernetes `json:"kubernetes.io,omitempty"`
 }
@@ -36,13 +39,19 @@ type validator struct {
 
 var _ = serviceaccount.Validator(&validator{})
 
+func NewValidator(getter serviceaccount.ServiceAccountTokenGetter) serviceaccount.Validator {
+	return &validator{
+		getter: getter,
+	}
+}
+
 func (v *validator) Validate(ctx context.Context, _ string, public *jwt.Claims, privateObj interface{}) (*apiserverserviceaccount.ServiceAccountInfo, error) {
 	private, ok := privateObj.(*privateClaims)
 	if !ok {
 		klog.Errorf("service account jwt validator expected private claim of type *privateClaims but got: %T", privateObj)
 		return nil, fmt.Errorf("service account token claims could not be validated due to unexpected private claim")
 	}
-	nowTime := time.Now()
+	nowTime := now()
 	err := public.Validate(jwt.Expected{
 		Time: nowTime,
 	})
