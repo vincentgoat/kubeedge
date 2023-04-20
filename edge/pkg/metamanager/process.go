@@ -3,6 +3,7 @@ package metamanager
 import (
 	"encoding/json"
 	"fmt"
+	"k8s.io/apimachinery/pkg/runtime"
 	"strings"
 	"time"
 
@@ -16,9 +17,11 @@ import (
 	"github.com/kubeedge/kubeedge/common/constants"
 	connect "github.com/kubeedge/kubeedge/edge/pkg/common/cloudconnection"
 	"github.com/kubeedge/kubeedge/edge/pkg/common/modules"
+	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/client"
 	metaManagerConfig "github.com/kubeedge/kubeedge/edge/pkg/metamanager/config"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/dao"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/metaserver/kubernetes/storage/sqlite/imitator"
+	policyv1alpha1 "github.com/kubeedge/kubeedge/pkg/apis/policy/v1alpha1"
 )
 
 // Constants to check metamanager processes
@@ -91,18 +94,45 @@ func msgDebugInfo(message *model.Message) string {
 	return fmt.Sprintf("msgID[%s] resource[%s]", message.GetID(), message.GetResource())
 }
 
+func (m *metaManager) handleMixerResource(message *model.Message) error {
+	am := &policyv1alpha1.AccessMixer{}
+	if err := json.Unmarshal(message.GetContent().([]byte), am); err != nil {
+		klog.Errorf("unmarshal message failed: %v", err)
+		return fmt.Errorf("unmarshal message failed: %v", err)
+	}
+	if err := m.cachePolicyResource(am, message.GetOperation()); err != nil {
+		klog.Errorf("parse policy resource failed: %v", err)
+		return fmt.Errorf("parse policy resource failed: %v", err)
+	}
+	return nil
+}
+
 func (m *metaManager) handleMessage(message *model.Message) error {
+	obj := message.GetContent()
+	var runtimeObj runtime.Object
+	var ok bool
+	if runtimeObj, ok = obj.(runtime.Object); !ok {
+		return fmt.Errorf("message content is not runtime object")
+	}
+	indexer := m.getIndexer(runtimeObj)
+
+	_, ok = obj.(*policyv1alpha1.AccessMixer)
+	if ok {
+		if err := m.handleMixerResource(message); err != nil {
+			klog.Errorf("handle mixer resource failed: %v", err)
+			return fmt.Errorf("handle mixer resource failed: %v", err)
+		}
+	}
 	resKey, resType, _ := parseResource(message.GetResource())
 	switch message.GetOperation() {
 	case model.InsertOperation, model.UpdateOperation, model.PatchOperation, model.ResponseOperation:
-		obj := message.GetContent()
-		if _, exist, err := m.indexer.Get(obj); err == nil && exist {
-			if err := m.indexer.Update(obj); err != nil {
+		if _, exist, err := indexer.Get(obj); err == nil && exist {
+			if err := indexer.Update(obj); err != nil {
 				klog.Errorf("update object failed: %v", err)
 				return fmt.Errorf("update object failed: %v", err)
 			}
 		} else {
-			if err := m.indexer.Add(obj); err != nil {
+			if err := indexer.Add(obj); err != nil {
 				klog.Errorf("add object failed: %v", err)
 				return fmt.Errorf("add object failed: %v", err)
 			}
@@ -129,9 +159,8 @@ func (m *metaManager) handleMessage(message *model.Message) error {
 
 	case model.DeleteOperation:
 		var err error
-		if err = m.indexer.Delete(message.GetContent()); err != nil {
-			klog.Errorf("delete object failed: %v", err)
-			return fmt.Errorf("delete object failed: %v", err)
+		if err = indexer.Delete(message.GetContent()); err != nil {
+			klog.Warningf("delete object failed: %v", err)
 		}
 		if resType == model.ResourceTypePod {
 			err = processDeletePodDB(*message)
@@ -317,21 +346,6 @@ func processDeletePodDB(message model.Message) error {
 	return nil
 }
 
-// KeyFunc keys should be nonconfidential and safe to log
-func KeyFunc(name, namespace string, tr *authenticationv1.TokenRequest) string {
-	var exp int64
-	if tr.Spec.ExpirationSeconds != nil {
-		exp = *tr.Spec.ExpirationSeconds
-	}
-
-	var ref authenticationv1.BoundObjectReference
-	if tr.Spec.BoundObjectRef != nil {
-		ref = *tr.Spec.BoundObjectRef
-	}
-
-	return fmt.Sprintf("%q/%q/%#v/%#v/%#v", name, namespace, tr.Spec.Audiences, exp, ref)
-}
-
 // getSpecialResourceKey get service account db key
 func getSpecialResourceKey(resType, resKey string, message model.Message) (string, error) {
 	if resType != model.ResourceTypeServiceAccountToken {
@@ -345,7 +359,7 @@ func getSpecialResourceKey(resType, resKey string, message model.Message) (strin
 	if len(tokens) != 3 {
 		return "", fmt.Errorf("failed to get resource %s name and namespace", resKey)
 	}
-	return KeyFunc(tokens[2], tokens[0], tokenReq), nil
+	return client.KeyFunc(tokens[2], tokens[0], tokenReq), nil
 }
 
 func (m *metaManager) processQuery(message model.Message) {
