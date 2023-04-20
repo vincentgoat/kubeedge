@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	"k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -17,31 +19,33 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilwaitgroup "k8s.io/apimachinery/pkg/util/waitgroup"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
+	"k8s.io/apiserver/pkg/authentication/request/bearertoken"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	genericapifilters "k8s.io/apiserver/pkg/endpoints/filters"
 	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/server"
 	genericfilters "k8s.io/apiserver/pkg/server/filters"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	rbaclisters "k8s.io/client-go/listers/rbac/v1"
 	certutil "k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"k8s.io/kubernetes/pkg/serviceaccount"
 	"k8s.io/kubernetes/plugin/pkg/auth/authorizer/rbac"
 
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
 	commontypes "github.com/kubeedge/kubeedge/common/types"
 	"github.com/kubeedge/kubeedge/edge/pkg/common/modules"
 	"github.com/kubeedge/kubeedge/edge/pkg/edgehub"
+	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/client"
+	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/constants"
+	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/metaserver/auth"
 	metaserverconfig "github.com/kubeedge/kubeedge/edge/pkg/metamanager/metaserver/config"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/metaserver/handlerfactory"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/metaserver/kubernetes/serializer"
 	kefeatures "github.com/kubeedge/kubeedge/pkg/features"
 )
-
-type AuthInterface interface {
-	authenticator.Request
-	authorizer.RequestAttributesGetter
-	authorizer.Authorizer
-}
 
 // MetaServer is simplification of server.GenericAPIServer
 type MetaServer struct {
@@ -51,20 +55,44 @@ type MetaServer struct {
 	Handler               http.Handler
 	NegotiatedSerializer  runtime.NegotiatedSerializer
 	Factory               *handlerfactory.Factory
-	Auth                  AuthInterface
+	Auth                  *metaServerAuth
 }
 
-func BuildAuth() AuthInterface {
-	authorizer := rbac.New()
-	return &Auth{}
+type metaServerAuth struct {
+	Authenticator authenticator.Request
+	Authorizer    authorizer.Authorizer
 }
 
-func NewMetaServer() *MetaServer {
+func BuildAuth(m *client.CacheManager) *metaServerAuth {
+	newAuthorizer := rbac.New(
+		&rbac.RoleGetter{
+			Lister: rbaclisters.NewRoleLister(client.GetOrNewIndexer(m, &rbacv1.Role{})),
+		},
+		&rbac.RoleBindingLister{
+			Lister: rbaclisters.NewRoleBindingLister(client.GetOrNewIndexer(m, &rbacv1.RoleBinding{})),
+		},
+		&rbac.ClusterRoleGetter{
+			Lister: rbaclisters.NewClusterRoleLister(client.GetOrNewIndexer(m, &rbacv1.ClusterRole{})),
+		},
+		&rbac.ClusterRoleBindingLister{
+			Lister: rbaclisters.NewClusterRoleBindingLister(client.GetOrNewIndexer(m, &rbacv1.ClusterRoleBinding{})),
+		})
+	getter := auth.NewGetterFromClient(corelisters.NewSecretLister(client.GetOrNewIndexer(m, &v1.Secret{})),
+		corelisters.NewServiceAccountLister(client.GetOrNewIndexer(m, &v1.ServiceAccount{})),
+		corelisters.NewPodLister(client.GetOrNewIndexer(m, &v1.Pod{})))
+	tokenAuthenticator := auth.JWTTokenAuthenticator([]string{constants.DefaultServiceAccountIssuer},
+		authenticator.Audiences{constants.DefaultServiceAccountIssuer}, serviceaccount.NewValidator(getter))
+	newAuthenticator := bearertoken.New(tokenAuthenticator)
+	return &metaServerAuth{newAuthenticator, newAuthorizer}
+}
+
+func NewMetaServer(m *client.CacheManager) *MetaServer {
 	ls := MetaServer{
 		HandlerChainWaitGroup: new(utilwaitgroup.SafeWaitGroup),
 		LongRunningFunc:       genericfilters.BasicLongRunningRequestCheck(sets.NewString("watch"), sets.NewString()),
 		NegotiatedSerializer:  serializer.NewNegotiatedSerializer(),
 		Factory:               handlerfactory.NewFactory(),
+		Auth:                  BuildAuth(m),
 	}
 	return &ls
 }
@@ -221,10 +249,13 @@ func BuildHandlerChain(handler http.Handler, ls *MetaServer) http.Handler {
 	cfg := &server.Config{
 		LegacyAPIGroupPrefixes: sets.NewString(server.DefaultLegacyAPIPrefix),
 	}
-
+	handler = genericapifilters.WithAuthorization(handler, ls.Auth.Authorizer, legacyscheme.Codecs)
+	failedHandler := genericapifilters.Unauthorized(legacyscheme.Codecs)
+	handler = genericapifilters.WithAuthentication(handler, ls.Auth.Authenticator, failedHandler, authenticator.Audiences{constants.DefaultServiceAccountIssuer})
 	handler = genericfilters.WithWaitGroup(handler, ls.LongRunningFunc, ls.HandlerChainWaitGroup)
 	handler = genericapifilters.WithRequestInfo(handler, server.NewRequestInfoResolver(cfg))
 	handler = genericfilters.WithPanicRecovery(handler, &apirequest.RequestInfoFactory{})
+	// with context authorization for authorizing on the cloud side
 	handler = WithAuthorizationHeader(handler)
 	return handler
 }
