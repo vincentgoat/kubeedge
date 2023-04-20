@@ -12,7 +12,6 @@ import (
 	"github.com/kubeedge/beehive/pkg/core/model"
 	"github.com/kubeedge/kubeedge/edge/pkg/common/message"
 	"github.com/kubeedge/kubeedge/edge/pkg/common/modules"
-	"github.com/kubeedge/kubeedge/edge/pkg/metamanager"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/dao"
 )
 
@@ -86,7 +85,7 @@ func requiresRefresh(tr *authenticationv1.TokenRequest) bool {
 }
 
 func getTokenLocally(name, namespace string, tr *authenticationv1.TokenRequest) (*authenticationv1.TokenRequest, error) {
-	resKey := metamanager.KeyFunc(name, namespace, tr)
+	resKey := KeyFunc(name, namespace, tr)
 	metas, err := dao.QueryMeta("key", resKey)
 	if err != nil {
 		klog.Errorf("query meta %s failed: %v", resKey, err)

@@ -25,7 +25,7 @@ type itemsInPolicy struct {
 }
 
 func (r itemsInPolicy) getRoleItems(m interface{}) {
-	am, ok := m.(*policyv1alpha1.AccessMixer)
+	am, ok := m.(*policyv1alpha1.ServiceAccountAccess)
 	if !ok {
 		return
 	}
@@ -40,7 +40,7 @@ func (r itemsInPolicy) getRoleItems(m interface{}) {
 					Name:      rb.RoleBinding.RoleRef.Name,
 					Namespace: am.Namespace,
 				},
-				Rules: rb.RolePolicy.Rules,
+				Rules: rb.Rules,
 			}
 			key, err := cache.MetaNamespaceKeyFunc(tmpRole)
 			if err != nil {
@@ -57,7 +57,7 @@ func (r itemsInPolicy) getRoleItems(m interface{}) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: rb.RoleBinding.RoleRef.Name,
 				},
-				Rules: rb.RolePolicy.Rules,
+				Rules: rb.Rules,
 			}
 			key, err := cache.MetaNamespaceKeyFunc(tmpClusterRole)
 			if err != nil {
@@ -78,7 +78,7 @@ func (r itemsInPolicy) getRoleItems(m interface{}) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: crb.ClusterRoleBinding.RoleRef.Name,
 			},
-			Rules: crb.RolePolicy.Rules,
+			Rules: crb.Rules,
 		}
 		key, err := cache.MetaNamespaceKeyFunc(tmpClusterRole)
 		if err != nil {
@@ -114,12 +114,12 @@ func CacheServiceAccount(saIndexer cache.Indexer, sa *corev1.ServiceAccount, opr
 	return nil
 }
 
-func CacheRole(roleIndexer cache.Indexer, am *policyv1alpha1.AccessMixer, opr string) error {
+func CacheRole(roleIndexer cache.Indexer, acc *policyv1alpha1.ServiceAccountAccess, opr string) error {
 	var roleFilter = itemsInPolicy{
 		itemKey:    make(map[string]interface{}),
 		targetKind: "Role",
 	}
-	roleFilter.getRoleItems(am)
+	roleFilter.getRoleItems(acc)
 	for _, r := range roleFilter.ret {
 		role := r.(*rbacv1.Role)
 		switch opr {
@@ -145,12 +145,12 @@ func CacheRole(roleIndexer cache.Indexer, am *policyv1alpha1.AccessMixer, opr st
 	return nil
 }
 
-func CacheClusterRole(crIndexer cache.Indexer, am *policyv1alpha1.AccessMixer, opr string) error {
+func CacheClusterRole(crIndexer cache.Indexer, acc *policyv1alpha1.ServiceAccountAccess, opr string) error {
 	var crFilter = itemsInPolicy{
 		itemKey:    make(map[string]interface{}),
 		targetKind: "ClusterRole",
 	}
-	crFilter.getRoleItems(am)
+	crFilter.getRoleItems(acc)
 	for _, r := range crFilter.ret {
 		cr := r.(*rbacv1.ClusterRole)
 		switch opr {
@@ -176,8 +176,8 @@ func CacheClusterRole(crIndexer cache.Indexer, am *policyv1alpha1.AccessMixer, o
 	return nil
 }
 
-func CacheRoleBinding(rbIndexer cache.Indexer, am *policyv1alpha1.AccessMixer, opr string) error {
-	for _, rb := range am.Spec.AccessRoleBinding {
+func CacheRoleBinding(rbIndexer cache.Indexer, acc *policyv1alpha1.ServiceAccountAccess, opr string) error {
+	for _, rb := range acc.Spec.AccessRoleBinding {
 		switch opr {
 		case model.InsertOperation, model.UpdateOperation, model.PatchOperation:
 			if _, exist, err := rbIndexer.Get(&rb.RoleBinding); err == nil && exist {
@@ -201,8 +201,8 @@ func CacheRoleBinding(rbIndexer cache.Indexer, am *policyv1alpha1.AccessMixer, o
 	return nil
 }
 
-func CacheClusterRoleBinding(crbIndexer cache.Indexer, am *policyv1alpha1.AccessMixer, opr string) error {
-	for _, crb := range am.Spec.AccessClusterRoleBinding {
+func CacheClusterRoleBinding(crbIndexer cache.Indexer, acc *policyv1alpha1.ServiceAccountAccess, opr string) error {
+	for _, crb := range acc.Spec.AccessClusterRoleBinding {
 		switch opr {
 		case model.InsertOperation, model.UpdateOperation, model.PatchOperation:
 			if _, exist, err := crbIndexer.Get(&crb.ClusterRoleBinding); err == nil && exist {

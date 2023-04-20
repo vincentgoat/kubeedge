@@ -249,9 +249,11 @@ func BuildHandlerChain(handler http.Handler, ls *MetaServer) http.Handler {
 	cfg := &server.Config{
 		LegacyAPIGroupPrefixes: sets.NewString(server.DefaultLegacyAPIPrefix),
 	}
-	handler = genericapifilters.WithAuthorization(handler, ls.Auth.Authorizer, legacyscheme.Codecs)
-	failedHandler := genericapifilters.Unauthorized(legacyscheme.Codecs)
-	handler = genericapifilters.WithAuthentication(handler, ls.Auth.Authenticator, failedHandler, authenticator.Audiences{constants.DefaultServiceAccountIssuer})
+	if kefeatures.DefaultFeatureGate.Enabled(kefeatures.RequireAuthorization) {
+		handler = genericapifilters.WithAuthorization(handler, ls.Auth.Authorizer, legacyscheme.Codecs)
+		failedHandler := genericapifilters.Unauthorized(legacyscheme.Codecs)
+		handler = genericapifilters.WithAuthentication(handler, ls.Auth.Authenticator, failedHandler, authenticator.Audiences{constants.DefaultServiceAccountIssuer})
+	}
 	handler = genericfilters.WithWaitGroup(handler, ls.LongRunningFunc, ls.HandlerChainWaitGroup)
 	handler = genericapifilters.WithRequestInfo(handler, server.NewRequestInfoResolver(cfg))
 	handler = genericfilters.WithPanicRecovery(handler, &apirequest.RequestInfoFactory{})
