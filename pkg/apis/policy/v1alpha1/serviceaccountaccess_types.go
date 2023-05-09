@@ -18,9 +18,8 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	rbac "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/kubernetes/pkg/apis/rbac"
 )
 
 // +genclient
@@ -62,27 +61,25 @@ type ServiceAccountAccessList struct {
 // AccessSpec defines the desired state of AccessSpec
 type AccessSpec struct {
 	// ServiceAccount is one-to-one corresponding relations with the serviceaccountaccess.
-	ServiceAccount corev1.ServiceAccount `json:"serviceAccount,omitempty"`
+	ServiceAccount corev1.ServiceAccount `json:"serviceAccount,omitempty" protobuf:"bytes,1,opt,name=serviceAccount,embedded=1"`
 	// AccessRoleBinding represents rbac rolebinding plus detailed role info.
 	AccessRoleBinding []AccessRoleBinding `json:"accessRoleBinding,omitempty"`
 	// AccessClusterRoleBinding represents rbac ClusterRoleBinding plus detailed ClusterRole info.
 	AccessClusterRoleBinding []AccessClusterRoleBinding `json:"accessClusterRoleBinding,omitempty"`
-	// RawExtension for extend resource.
-	RawExtension []runtime.RawExtension `json:"rawExtension,omitempty"`
 }
 
 // AccessRoleBinding represents rbac rolebinding plus detailed role info.
 type AccessRoleBinding struct {
 	// RoleBinding represents rbac rolebinding.
-	RoleBinding rbac.RoleBinding `json:"roleBinding,omitempty"`
+	RoleBinding rbac.RoleBinding `json:"roleBinding,omitempty" protobuf:"bytes,1,opt,name=roleBinding,embedded=2"`
 	// Rules contains role rules.
-	Rules []rbac.PolicyRule `json:"rules,omitempty"`
+	Rules []rbac.PolicyRule `json:"rules,omitempty" protobuf:"bytes,2,opt,name=rules,embedded=3"`
 }
 
 // AccessClusterRoleBinding represents rbac ClusterRoleBinding plus detailed ClusterRole info.
 type AccessClusterRoleBinding struct {
 	// ClusterRoleBinding represents rbac ClusterRoleBinding.
-	ClusterRoleBinding rbac.ClusterRoleBinding `json:"clusterRoleBinding,omitempty"`
+	ClusterRoleBinding rbac.ClusterRoleBinding `json:"clusterRoleBinding,omitempty" protobuf:"bytes,1,opt,name=clusterRoleBinding,embedded=4"`
 	// Rules contains role rules.
-	Rules []rbac.PolicyRule `json:"rules,omitempty"`
+	Rules []rbac.PolicyRule `json:"rules,omitempty" protobuf:"bytes,2,opt,name=rules,embedded=5"`
 }
