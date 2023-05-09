@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"gopkg.in/square/go-jose.v2/jwt"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/client-go/tools/cache"
@@ -24,17 +25,20 @@ type AuthInterface interface {
 type jwtTokenAuthenticator struct {
 	indexer      cache.Indexer
 	issuers      map[string]bool
+	keys         []interface{}
 	validator    serviceaccount.Validator
 	implicitAuds authenticator.Audiences
 }
 
-func JWTTokenAuthenticator(issuers []string, implicitAuds authenticator.Audiences, validator serviceaccount.Validator) authenticator.Token {
+func JWTTokenAuthenticator(indexer cache.Indexer, issuers []string, keys []interface{}, implicitAuds authenticator.Audiences, validator serviceaccount.Validator) authenticator.Token {
 	issuersMap := make(map[string]bool)
 	for _, issuer := range issuers {
 		issuersMap[issuer] = true
 	}
 	return &jwtTokenAuthenticator{
+		indexer:      indexer,
 		issuers:      issuersMap,
+		keys:         keys,
 		implicitAuds: implicitAuds,
 		validator:    validator,
 	}
@@ -68,10 +72,33 @@ func (j *jwtTokenAuthenticator) AuthenticateToken(ctx context.Context, tokenData
 	if err := parseSigned(tokenData, public, private); err != nil {
 		return nil, false, err
 	}
-	// auth token is existing in cache
-	tokenReqs, err := j.indexer.ByIndex(constants.TokenRequestIndexer, tokenData)
-	if err != nil || len(tokenReqs) != 1 {
-		return nil, false, fmt.Errorf("tokenData not found when authenticating")
+	if len(j.keys) == 0 {
+		// auth token is existing in cache
+		tokenReqs, err := j.indexer.ByIndex(constants.TokenRequestIndexer, tokenData)
+		if err != nil || len(tokenReqs) != 1 {
+			return nil, false, fmt.Errorf("tokenData not found when authenticating")
+		}
+	} else {
+		tok, err := jwt.ParseSigned(tokenData)
+		if err != nil {
+			return nil, false, nil
+		}
+		var (
+			found   bool
+			errlist []error
+		)
+		for _, key := range j.keys {
+			if err := tok.Claims(key, public, private); err != nil {
+				errlist = append(errlist, err)
+				continue
+			}
+			found = true
+			break
+		}
+
+		if !found {
+			return nil, false, utilerrors.NewAggregate(errlist)
+		}
 	}
 
 	tokenAudiences := authenticator.Audiences(public.Audience)

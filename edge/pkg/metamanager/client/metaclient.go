@@ -32,15 +32,16 @@ type CoreInterface interface {
 }
 
 type metaClient struct {
-	send SendInterface
+	send     SendInterface
+	indexers *CacheManager
 }
 
 func (m *metaClient) Pods(namespace string) PodsInterface {
-	return newPods(namespace, m.send)
+	return newPods(namespace, m)
 }
 
 func (m *metaClient) ConfigMaps(namespace string) ConfigMapsInterface {
-	return newConfigMaps(namespace, m.send)
+	return newConfigMaps(namespace, m)
 }
 
 func (m *metaClient) Nodes(namespace string) NodesInterface {
@@ -52,11 +53,11 @@ func (m *metaClient) NodeStatus(namespace string) NodeStatusInterface {
 }
 
 func (m *metaClient) Secrets(namespace string) SecretsInterface {
-	return newSecrets(namespace, m.send)
+	return newSecrets(namespace, m)
 }
 
 func (m *metaClient) ServiceAccountToken() ServiceAccountTokenInterface {
-	return newServiceAccountToken(m.send)
+	return newServiceAccountToken(m)
 }
 
 func (m *metaClient) PodStatus(namespace string) PodStatusInterface {
@@ -83,9 +84,10 @@ func (m *metaClient) Leases(namespace string) LeasesInterface {
 }
 
 // New creates new metaclient
-func New() CoreInterface {
+func New(cm *CacheManager) CoreInterface {
 	return &metaClient{
-		send: newSend(),
+		send:     newSend(),
+		indexers: cm,
 	}
 }
 

@@ -3,18 +3,20 @@ package metamanager
 import (
 	"encoding/json"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime"
 	"strings"
 	"time"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
 	"github.com/kubeedge/beehive/pkg/core/model"
 	cloudmodules "github.com/kubeedge/kubeedge/cloud/pkg/common/modules"
 	"github.com/kubeedge/kubeedge/common/constants"
+	commontypes "github.com/kubeedge/kubeedge/common/types"
 	connect "github.com/kubeedge/kubeedge/edge/pkg/common/cloudconnection"
 	"github.com/kubeedge/kubeedge/edge/pkg/common/modules"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/client"
@@ -63,7 +65,8 @@ func sendToCloud(message *model.Message) {
 
 // Resource format: <namespace>/<restype>[/resid]
 // return <reskey, restype, resid>
-func parseResource(resource string) (string, string, string) {
+func parseResource(message *model.Message) (string, string, string) {
+	resource := message.GetResource()
 	tokens := strings.Split(resource, constants.ResourceSep)
 	resType := ""
 	resID := ""
@@ -75,7 +78,29 @@ func parseResource(resource string) (string, string, string) {
 		resID = tokens[len(tokens)-1]
 	default:
 	}
-	return resource, resType, resID
+	if resType != model.ResourceTypeServiceAccountToken {
+		return resource, resType, resID
+	}
+	tokenReq, ok := message.GetContent().(*authenticationv1.TokenRequest)
+	if !ok {
+		klog.Errorf("failed to get token request from message %s", message.GetID())
+		return "", "", ""
+	}
+	trTokens := strings.Split(resource, constants.ResourceSep)
+	if len(trTokens) != 3 {
+		klog.Errorf("failed to get resource %s name and namespace", resource)
+		return "", "", ""
+	}
+	return client.KeyFunc(trTokens[2], trTokens[0], tokenReq), resType, ""
+}
+
+func getKeyInResource(resource string) string {
+	tokens := strings.Split(resource, constants.ResourceSep)
+	if len(tokens) != 3 {
+		klog.Errorf("failed to get resource %s name and namespace", resource)
+		return ""
+	}
+	return fmt.Sprintf("%s/%s", tokens[0], tokens[2])
 }
 
 // is resource type require remote query
@@ -107,23 +132,36 @@ func (m *metaManager) handleMixerResource(message *model.Message) error {
 	return nil
 }
 
-func (m *metaManager) handleMessage(message *model.Message) error {
-	obj := message.GetContent()
-	var runtimeObj runtime.Object
-	var ok bool
-	if runtimeObj, ok = obj.(runtime.Object); !ok {
-		return fmt.Errorf("message content is not runtime object")
-	}
-	indexer := m.getIndexer(runtimeObj)
-
-	_, ok = obj.(*policyv1alpha1.ServiceAccountAccess)
-	if ok {
-		if err := m.handleMixerResource(message); err != nil {
-			klog.Errorf("handle mixer resource failed: %v", err)
-			return fmt.Errorf("handle mixer resource failed: %v", err)
+func handleCustomizedMessage(message *model.Message) error {
+	switch message.GetOperation() {
+	case model.InsertOperation, model.UpdateOperation, model.PatchOperation, model.ResponseOperation:
+		content, err := message.GetContentData()
+		if err != nil {
+			klog.Errorf("get message content data failed, message: %s, error: %s", msgDebugInfo(message), err)
+			return fmt.Errorf("get message content data failed, error: %s", err)
+		}
+		resKey, resType, _ := parseResource(message)
+		meta := &dao.Meta{
+			Key:   resKey,
+			Type:  resType,
+			Value: string(content)}
+		err = dao.InsertOrUpdate(meta)
+		if err != nil {
+			klog.Errorf("insert or update meta failed, message: %s, error: %v", msgDebugInfo(message), err)
+			return fmt.Errorf("insert or update meta failed, %s", err)
+		}
+	case model.DeleteOperation:
+		err := dao.DeleteMetaByKey(message.GetResource())
+		if err != nil {
+			klog.Errorf("delete meta failed, message: %s, error: %s", msgDebugInfo(message), err)
+			return fmt.Errorf("delete meta failed, %s", err)
 		}
 	}
-	resKey, resType, _ := parseResource(message.GetResource())
+	return nil
+}
+
+func handleRuntimeObj(indexer cache.Indexer, message *model.Message, obj interface{}) error {
+	resKey, resType, _ := parseResource(message)
 	switch message.GetOperation() {
 	case model.InsertOperation, model.UpdateOperation, model.PatchOperation, model.ResponseOperation:
 		if _, exist, err := indexer.Get(obj); err == nil && exist {
@@ -142,11 +180,7 @@ func (m *metaManager) handleMessage(message *model.Message) error {
 			klog.Errorf("handle [%s] message content data failed, %s", message.GetOperation(), msgDebugInfo(message))
 			return fmt.Errorf("failed to handle [%s] message content data: %s", message.GetOperation(), err)
 		}
-		resKey, err = getSpecialResourceKey(resType, resKey, *message)
-		if err != nil {
-			klog.Errorf("get remote query response content data failed, %s", msgDebugInfo(message))
-			return fmt.Errorf("failed to get remote query response message content data: %s", err)
-		}
+
 		meta := &dao.Meta{
 			Key:   resKey,
 			Type:  resType,
@@ -154,7 +188,7 @@ func (m *metaManager) handleMessage(message *model.Message) error {
 		err = dao.InsertOrUpdate(meta)
 		if err != nil {
 			klog.Errorf("insert or update meta failed, %s: %v", msgDebugInfo(message), err)
-			return fmt.Errorf("failed to insert or update meta to DB: %s", err)
+			return fmt.Errorf("insert or update meta failed, %s", err)
 		}
 
 	case model.DeleteOperation:
@@ -169,7 +203,7 @@ func (m *metaManager) handleMessage(message *model.Message) error {
 				return fmt.Errorf("failed to delete pod meta to DB: %s", err)
 			}
 		} else {
-			err = dao.DeleteMetaByKey(message.GetResource())
+			err = dao.DeleteMetaByKey(resKey)
 			if err != nil {
 				klog.Errorf("delete meta failed, %s", msgDebugInfo(message))
 				return fmt.Errorf("failed to delete meta to DB: %s", err)
@@ -179,19 +213,43 @@ func (m *metaManager) handleMessage(message *model.Message) error {
 	return nil
 }
 
+func (m *metaManager) handleMessage(message *model.Message) error {
+	obj := message.GetContent()
+	objRsp, ok := obj.(*commontypes.ObjectResp)
+	if ok {
+		if objRsp.Err != nil {
+			return nil
+		}
+		obj = objRsp.Object
+	}
+	var runtimeObj runtime.Object
+	if runtimeObj, ok = obj.(runtime.Object); !ok {
+		return handleCustomizedMessage(message)
+	}
+	_, ok = obj.(*policyv1alpha1.ServiceAccountAccess)
+	if ok {
+		if err := m.handleMixerResource(message); err != nil {
+			klog.Errorf("handle mixer resource failed: %v", err)
+			return fmt.Errorf("handle mixer resource failed: %v", err)
+		}
+		// won't return here, continue to handle mixer resource
+	}
+	indexer := m.getIndexer(runtimeObj)
+	return handleRuntimeObj(indexer, message, runtimeObj)
+}
+
 func (m *metaManager) processInsert(message model.Message) {
 	imitator.DefaultV2Client.Inject(message)
+
+	msgSource := message.GetSource()
+	if msgSource == modules.EdgedModuleName {
+		m.processRemote(message)
+		return
+	}
 	if err := m.handleMessage(&message); err != nil {
 		feedbackError(err, message)
 		return
 	}
-	_, resType, _ := parseResource(message.GetResource())
-	if (resType == model.ResourceTypeNode || resType == model.ResourceTypeLease) && message.GetSource() == modules.EdgedModuleName {
-		sendToCloud(&message)
-		return
-	}
-
-	msgSource := message.GetSource()
 	if msgSource == cloudmodules.DeviceControllerModuleName {
 		message.SetRoute(modules.MetaGroup, modules.DeviceTwinModuleName)
 		beehiveContext.Send(modules.DeviceTwinModuleName, message)
@@ -207,21 +265,24 @@ func (m *metaManager) processInsert(message model.Message) {
 func (m *metaManager) processUpdate(message model.Message) {
 	imitator.DefaultV2Client.Inject(message)
 
+	msgSource := message.GetSource()
+	_, resType, _ := parseResource(&message)
+	if msgSource == modules.EdgedModuleName && (resType == model.ResourceTypePodStatus ||
+		resType == model.ResourceTypeNodeStatus || resType == model.ResourceTypeLease) {
+		m.processRemote(message)
+		return
+	}
 	if err := m.handleMessage(&message); err != nil {
 		feedbackError(err, message)
 		return
 	}
-	msgSource := message.GetSource()
 	switch msgSource {
 	case modules.EdgedModuleName:
-		sendToCloud(&message)
 		// For pod status update message, we need to wait for the response message
 		// to ensure that the pod status is correctly reported to the kube-apiserver
-		_, resType, _ := parseResource(message.GetResource())
-		if resType != model.ResourceTypePodStatus && resType != model.ResourceTypeLease {
-			resp := message.NewRespByMessage(&message, OK)
-			sendToEdged(resp, message.IsSync())
-		}
+		sendToCloud(&message)
+		resp := message.NewRespByMessage(&message, OK)
+		sendToEdged(resp, message.IsSync())
 	case cloudmodules.EdgeControllerModuleName, cloudmodules.DynamicControllerModuleName:
 		sendToEdged(&message, message.IsSync())
 		resp := message.NewRespByMessage(&message, OK)
@@ -233,7 +294,7 @@ func (m *metaManager) processUpdate(message model.Message) {
 		message.SetRoute(modules.MetaGroup, modules.DeviceTwinModuleName)
 		beehiveContext.Send(modules.DeviceTwinModuleName, message)
 
-	case cloudmodules.PolicyControllerGroupName:
+	case cloudmodules.PolicyControllerModuleName:
 		resp := message.NewRespByMessage(&message, OK)
 		sendToCloud(resp)
 	default:
@@ -242,12 +303,7 @@ func (m *metaManager) processUpdate(message model.Message) {
 }
 
 func (m *metaManager) processPatch(message model.Message) {
-	if err := m.handleMessage(&message); err != nil {
-		feedbackError(err, message)
-		return
-	}
-
-	sendToCloud(&message)
+	m.processRemote(message)
 }
 
 func (m *metaManager) processResponse(message model.Message) {
@@ -264,11 +320,58 @@ func (m *metaManager) processResponse(message model.Message) {
 	}
 }
 
+func deletePodRemote(m *metaManager, message model.Message) {
+	go func() {
+		// TODO: retry
+		var err error
+		var resp model.Message
+		defer func() {
+			if err != nil {
+				klog.Errorf("delete pod remote failed, req[%s], err: %v", msgDebugInfo(&message), err)
+				feedbackError(fmt.Errorf("failed to delete pod remote: %s", err), message)
+			}
+		}()
+		originalID := message.GetID()
+		message.UpdateID()
+		resp, err = beehiveContext.SendSync(
+			string(metaManagerConfig.Config.ContextSendModule),
+			message,
+			time.Duration(metaManagerConfig.Config.RemoteQueryTimeout)*time.Second)
+		if err != nil {
+			klog.Errorf("process delete pod remote failed, req[%s], err: %v", msgDebugInfo(&message), err)
+			return
+		}
+		klog.V(4).Infof("process delete pod remote: req[%s], resp[%s]", msgDebugInfo(&message), msgDebugInfo(&resp))
+		content, ok := resp.GetContent().(string)
+		if ok && content == constants.MessageSuccessfulContent {
+			klog.V(4).Infof("process delete remote pod successfully")
+			indexer := m.getIndexer(&corev1.Pod{})
+			key := getKeyInResource(resp.GetResource())
+			var obj interface{}
+			var exists bool
+			if obj, exists, err = indexer.GetByKey(key); err == nil && exists {
+				err = indexer.Delete(obj)
+				if err != nil {
+					klog.Warningf("message: %s process failure, delete pod from indexer failed with error: %v", message.GetID(), err)
+					return
+				}
+			}
+			err = processDeletePodDB(message)
+			if err != nil {
+				klog.Errorf("delete pod meta failed, message %s, err: %v", msgDebugInfo(&message), err)
+				return
+			}
+			feedbackResponse(&message, originalID, &resp)
+			return
+		}
+	}()
+}
+
 func (m *metaManager) processDelete(message model.Message) {
 	imitator.DefaultV2Client.Inject(message)
-	_, resType, _ := parseResource(message.GetResource())
+	_, resType, _ := parseResource(&message)
 	if resType == model.ResourceTypePod && message.GetSource() == modules.EdgedModuleName {
-		sendToCloud(&message)
+		deletePodRemote(m, message)
 		return
 	}
 
@@ -346,40 +449,12 @@ func processDeletePodDB(message model.Message) error {
 	return nil
 }
 
-// getSpecialResourceKey get service account db key
-func getSpecialResourceKey(resType, resKey string, message model.Message) (string, error) {
-	if resType != model.ResourceTypeServiceAccountToken {
-		return resKey, nil
-	}
-	tokenReq, ok := message.GetContent().(*authenticationv1.TokenRequest)
-	if !ok {
-		return "", fmt.Errorf("failed to get resource %s name and namespace", resKey)
-	}
-	tokens := strings.Split(resKey, constants.ResourceSep)
-	if len(tokens) != 3 {
-		return "", fmt.Errorf("failed to get resource %s name and namespace", resKey)
-	}
-	return client.KeyFunc(tokens[2], tokens[0], tokenReq), nil
-}
-
 func (m *metaManager) processQuery(message model.Message) {
-	resKey, resType, resID := parseResource(message.GetResource())
+	resKey, resType, resID := parseResource(&message)
 	var metas *[]string
 	var err error
 	if requireRemoteQuery(resType) && connect.IsConnected() {
-		resKey, err = getSpecialResourceKey(resType, resKey, message)
-		if err != nil {
-			klog.Errorf("failed to get special resource %s key", resKey)
-			return
-		}
-		metas, err = dao.QueryMeta("key", resKey)
-		if err != nil || len(*metas) == 0 || resType == model.ResourceTypeNode || resType == constants.ResourceTypeVolumeAttachment || resType == model.ResourceTypeLease {
-			m.processRemoteQuery(message)
-		} else {
-			resp := message.NewRespByMessage(&message, *metas)
-			resp.SetRoute(modules.MetaManagerModuleName, resp.GetGroup())
-			sendToEdged(resp, message.IsSync())
-		}
+		m.processRemote(message)
 		return
 	}
 
@@ -399,7 +474,7 @@ func (m *metaManager) processQuery(message model.Message) {
 	}
 }
 
-func (m *metaManager) processRemoteQuery(message model.Message) {
+func (m *metaManager) processRemote(message model.Message) {
 	go func() {
 		// TODO: retry
 		originalID := message.GetID()
@@ -409,19 +484,26 @@ func (m *metaManager) processRemoteQuery(message model.Message) {
 			message,
 			time.Duration(metaManagerConfig.Config.RemoteQueryTimeout)*time.Second)
 		if err != nil {
-			klog.Errorf("remote query failed, req[%s], err: %v", msgDebugInfo(&message), err)
-			feedbackError(fmt.Errorf("failed to query meta in DB: %s", err), message)
+			klog.Errorf("process remote failed, req[%s], err: %v", msgDebugInfo(&message), err)
+			feedbackError(fmt.Errorf("failed to process remote: %s", err), message)
+			return
+		}
+		klog.V(4).Infof("process remote: req[%s], resp[%s]", msgDebugInfo(&message), msgDebugInfo(&resp))
+		content, ok := resp.GetContent().(string)
+		if ok && content == constants.MessageSuccessfulContent {
+			klog.V(4).Infof("process remote successfully")
+			feedbackResponse(&message, originalID, &resp)
 			return
 		}
 		errContent, ok := resp.GetContent().(error)
 		if ok {
-			klog.V(4).Infof("process remote query err: %v", errContent)
+			klog.V(4).Infof("process remote err: %v", errContent)
 			feedbackResponse(&message, originalID, &resp)
 			return
 		}
-		klog.V(4).Infof("process remote query: req[%s], resp[%s]", msgDebugInfo(&message), msgDebugInfo(&resp))
+
 		if err := m.handleMessage(&resp); err != nil {
-			feedbackError(fmt.Errorf("failed to query meta in DB: %s", err), message)
+			feedbackError(err, message)
 			return
 		}
 

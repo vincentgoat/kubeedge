@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	api "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/cache"
 
 	"github.com/kubeedge/beehive/pkg/core/model"
 	"github.com/kubeedge/kubeedge/edge/pkg/common/message"
@@ -27,12 +28,14 @@ type SecretsInterface interface {
 type secrets struct {
 	namespace string
 	send      SendInterface
+	indexer   cache.Indexer
 }
 
-func newSecrets(namespace string, s SendInterface) *secrets {
+func newSecrets(namespace string, m *metaClient) *secrets {
 	return &secrets{
-		send:      s,
+		send:      m.send,
 		namespace: namespace,
+		indexer:   GetOrCreateIndexer(m.indexers, &api.Secret{}),
 	}
 }
 
@@ -49,6 +52,9 @@ func (c *secrets) Delete(name string) error {
 }
 
 func (c *secrets) Get(name string) (*api.Secret, error) {
+	if obj, exists, err := c.indexer.GetByKey(fmt.Sprintf("%s/%s", c.namespace, name)); err == nil && exists {
+		return obj.(*api.Secret), nil
+	}
 	resource := fmt.Sprintf("%s/%s/%s", c.namespace, model.ResourceTypeSecret, name)
 	secretMsg := message.BuildMsg(modules.MetaGroup, "", modules.EdgedModuleName, resource, model.QueryOperation, nil)
 	msg, err := c.send.SendSync(secretMsg)

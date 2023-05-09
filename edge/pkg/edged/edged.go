@@ -260,7 +260,7 @@ func (e *edged) syncPod(podCfg *config.PodConfig) {
 
 // MakeKubeClientBridge make kubeclient bridge to replace kubeclient with metaclient
 func MakeKubeClientBridge(kubeletDeps *kubelet.Dependencies) {
-	client := kubebridge.NewSimpleClientset(metaclient.New())
+	client := kubebridge.NewSimpleClientset(metaclient.New(metamanager.GetCacheManager()))
 
 	kubeletDeps.KubeClient = client
 	kubeletDeps.EventClient = nil

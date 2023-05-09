@@ -28,10 +28,16 @@ type metaManager struct {
 	Cache  *client.CacheManager
 }
 
+var cacheManager *client.CacheManager
+
+func init() {
+	cacheManager = &client.CacheManager{Indexers: make(map[reflect.Type]cache.Indexer)}
+}
+
 var _ core.Module = (*metaManager)(nil)
 
 func (m *metaManager) getIndexer(obj runtime.Object) cache.Indexer {
-	return client.GetOrNewIndexer(m.Cache, obj)
+	return client.GetOrCreateIndexer(m.Cache, obj)
 }
 
 func (m *metaManager) cachePolicyResource(acc *policyv1alpha1.ServiceAccountAccess, opr string) error {
@@ -56,8 +62,12 @@ func (m *metaManager) cachePolicyResource(acc *policyv1alpha1.ServiceAccountAcce
 func newMetaManager(enable bool) *metaManager {
 	return &metaManager{
 		enable: enable,
-		Cache:  &client.CacheManager{Indexers: make(map[reflect.Type]cache.Indexer)},
+		Cache:  cacheManager,
 	}
+}
+
+func GetCacheManager() *client.CacheManager {
+	return cacheManager
 }
 
 // Register register metamanager

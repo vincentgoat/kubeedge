@@ -6,10 +6,12 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"net/http"
 	"os"
 	"time"
 
+	authenticationv1 "k8s.io/api/authentication/v1"
 	"k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -29,9 +31,8 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	rbaclisters "k8s.io/client-go/listers/rbac/v1"
 	certutil "k8s.io/client-go/util/cert"
+	"k8s.io/client-go/util/keyutil"
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	"k8s.io/kubernetes/pkg/serviceaccount"
 	"k8s.io/kubernetes/plugin/pkg/auth/authorizer/rbac"
 
 	beehiveContext "github.com/kubeedge/beehive/pkg/core/context"
@@ -39,7 +40,6 @@ import (
 	"github.com/kubeedge/kubeedge/edge/pkg/common/modules"
 	"github.com/kubeedge/kubeedge/edge/pkg/edgehub"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/client"
-	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/constants"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/metaserver/auth"
 	metaserverconfig "github.com/kubeedge/kubeedge/edge/pkg/metamanager/metaserver/config"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/metaserver/handlerfactory"
@@ -63,25 +63,36 @@ type metaServerAuth struct {
 	Authorizer    authorizer.Authorizer
 }
 
-func BuildAuth(m *client.CacheManager) *metaServerAuth {
+func buildAuth(m *client.CacheManager) *metaServerAuth {
 	newAuthorizer := rbac.New(
 		&rbac.RoleGetter{
-			Lister: rbaclisters.NewRoleLister(client.GetOrNewIndexer(m, &rbacv1.Role{})),
+			Lister: rbaclisters.NewRoleLister(client.GetOrCreateIndexer(m, &rbacv1.Role{})),
 		},
 		&rbac.RoleBindingLister{
-			Lister: rbaclisters.NewRoleBindingLister(client.GetOrNewIndexer(m, &rbacv1.RoleBinding{})),
+			Lister: rbaclisters.NewRoleBindingLister(client.GetOrCreateIndexer(m, &rbacv1.RoleBinding{})),
 		},
 		&rbac.ClusterRoleGetter{
-			Lister: rbaclisters.NewClusterRoleLister(client.GetOrNewIndexer(m, &rbacv1.ClusterRole{})),
+			Lister: rbaclisters.NewClusterRoleLister(client.GetOrCreateIndexer(m, &rbacv1.ClusterRole{})),
 		},
 		&rbac.ClusterRoleBindingLister{
-			Lister: rbaclisters.NewClusterRoleBindingLister(client.GetOrNewIndexer(m, &rbacv1.ClusterRoleBinding{})),
+			Lister: rbaclisters.NewClusterRoleBindingLister(client.GetOrCreateIndexer(m, &rbacv1.ClusterRoleBinding{})),
 		})
-	getter := auth.NewGetterFromClient(corelisters.NewSecretLister(client.GetOrNewIndexer(m, &v1.Secret{})),
-		corelisters.NewServiceAccountLister(client.GetOrNewIndexer(m, &v1.ServiceAccount{})),
-		corelisters.NewPodLister(client.GetOrNewIndexer(m, &v1.Pod{})))
-	tokenAuthenticator := auth.JWTTokenAuthenticator([]string{constants.DefaultServiceAccountIssuer},
-		authenticator.Audiences{constants.DefaultServiceAccountIssuer}, serviceaccount.NewValidator(getter))
+	getter := auth.NewGetterFromClient(corelisters.NewSecretLister(client.GetOrCreateIndexer(m, &v1.Secret{})),
+		corelisters.NewServiceAccountLister(client.GetOrCreateIndexer(m, &v1.ServiceAccount{})),
+		corelisters.NewPodLister(client.GetOrCreateIndexer(m, &v1.Pod{})))
+
+	allPublicKeys := []interface{}{}
+	for _, keyfile := range metaserverconfig.Config.ServiceAccountKeyFiles {
+		publicKeys, err := keyutil.PublicKeysFromFile(keyfile)
+		if err != nil {
+			klog.Errorf("Failed to load public key file %s: %v", keyfile, err)
+			return nil
+		}
+		allPublicKeys = append(allPublicKeys, publicKeys...)
+	}
+	tokenAuthenticator := auth.JWTTokenAuthenticator(client.GetOrCreateIndexer(m, &authenticationv1.TokenRequest{}),
+		metaserverconfig.Config.ServiceAccountIssuers, allPublicKeys, metaserverconfig.Config.ApiAudiences,
+		auth.NewValidator(getter))
 	newAuthenticator := bearertoken.New(tokenAuthenticator)
 	return &metaServerAuth{newAuthenticator, newAuthorizer}
 }
@@ -92,7 +103,7 @@ func NewMetaServer(m *client.CacheManager) *MetaServer {
 		LongRunningFunc:       genericfilters.BasicLongRunningRequestCheck(sets.NewString("watch"), sets.NewString()),
 		NegotiatedSerializer:  serializer.NewNegotiatedSerializer(),
 		Factory:               handlerfactory.NewFactory(),
-		Auth:                  BuildAuth(m),
+		Auth:                  buildAuth(m),
 	}
 	return &ls
 }
@@ -252,7 +263,7 @@ func BuildHandlerChain(handler http.Handler, ls *MetaServer) http.Handler {
 	if kefeatures.DefaultFeatureGate.Enabled(kefeatures.RequireAuthorization) {
 		handler = genericapifilters.WithAuthorization(handler, ls.Auth.Authorizer, legacyscheme.Codecs)
 		failedHandler := genericapifilters.Unauthorized(legacyscheme.Codecs)
-		handler = genericapifilters.WithAuthentication(handler, ls.Auth.Authenticator, failedHandler, authenticator.Audiences{constants.DefaultServiceAccountIssuer})
+		handler = genericapifilters.WithAuthentication(handler, ls.Auth.Authenticator, failedHandler, metaserverconfig.Config.ApiAudiences)
 	}
 	handler = genericfilters.WithWaitGroup(handler, ls.LongRunningFunc, ls.HandlerChainWaitGroup)
 	handler = genericapifilters.WithRequestInfo(handler, server.NewRequestInfoResolver(cfg))

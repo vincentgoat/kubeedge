@@ -3,12 +3,12 @@ package client
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
-
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/tools/cache"
+	"reflect"
 
 	"github.com/kubeedge/beehive/pkg/core/model"
 	"github.com/kubeedge/kubeedge/common/constants"
@@ -33,6 +33,7 @@ type PodsInterface interface {
 type pods struct {
 	namespace string
 	send      SendInterface
+	indexer   cache.Indexer
 }
 
 // PodResp represents pod response from the api-server
@@ -41,10 +42,11 @@ type PodResp struct {
 	Err    apierrors.StatusError
 }
 
-func newPods(namespace string, s SendInterface) *pods {
+func newPods(namespace string, m *metaClient) *pods {
 	return &pods{
-		send:      s,
+		send:      m.send,
 		namespace: namespace,
+		indexer:   GetOrCreateIndexer(m.indexers, &corev1.Pod{}),
 	}
 }
 
@@ -73,6 +75,9 @@ func (c *pods) Delete(name string, options metav1.DeleteOptions) error {
 }
 
 func (c *pods) Get(name string) (*corev1.Pod, error) {
+	if obj, exists, err := c.indexer.GetByKey(fmt.Sprintf("%s/%s", c.namespace, name)); err == nil && exists {
+		return obj.(*corev1.Pod), nil
+	}
 	resource := fmt.Sprintf("%s/%s/%s", c.namespace, model.ResourceTypePod, name)
 	podMsg := message.BuildMsg(modules.MetaGroup, "", modules.EdgedModuleName, resource, model.QueryOperation, nil)
 	msg, err := c.send.SendSync(podMsg)
