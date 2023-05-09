@@ -95,12 +95,12 @@ func msgDebugInfo(message *model.Message) string {
 }
 
 func (m *metaManager) handleMixerResource(message *model.Message) error {
-	am := &policyv1alpha1.AccessMixer{}
-	if err := json.Unmarshal(message.GetContent().([]byte), am); err != nil {
+	acc := &policyv1alpha1.ServiceAccountAccess{}
+	if err := json.Unmarshal(message.GetContent().([]byte), acc); err != nil {
 		klog.Errorf("unmarshal message failed: %v", err)
 		return fmt.Errorf("unmarshal message failed: %v", err)
 	}
-	if err := m.cachePolicyResource(am, message.GetOperation()); err != nil {
+	if err := m.cachePolicyResource(acc, message.GetOperation()); err != nil {
 		klog.Errorf("parse policy resource failed: %v", err)
 		return fmt.Errorf("parse policy resource failed: %v", err)
 	}
@@ -116,7 +116,7 @@ func (m *metaManager) handleMessage(message *model.Message) error {
 	}
 	indexer := m.getIndexer(runtimeObj)
 
-	_, ok = obj.(*policyv1alpha1.AccessMixer)
+	_, ok = obj.(*policyv1alpha1.ServiceAccountAccess)
 	if ok {
 		if err := m.handleMixerResource(message); err != nil {
 			klog.Errorf("handle mixer resource failed: %v", err)

@@ -34,20 +34,20 @@ func (m *metaManager) getIndexer(obj runtime.Object) cache.Indexer {
 	return client.GetOrNewIndexer(m.Cache, obj)
 }
 
-func (m *metaManager) cachePolicyResource(am *policyv1alpha1.AccessMixer, opr string) error {
-	if err := client.CacheServiceAccount(m.getIndexer(&am.Spec.ServiceAccount), &am.Spec.ServiceAccount, opr); err != nil {
+func (m *metaManager) cachePolicyResource(acc *policyv1alpha1.ServiceAccountAccess, opr string) error {
+	if err := client.CacheServiceAccount(m.getIndexer(&acc.Spec.ServiceAccount), &acc.Spec.ServiceAccount, opr); err != nil {
 		return err
 	}
-	if err := client.CacheRole(m.getIndexer(&rbacv1.Role{}), am, opr); err != nil {
+	if err := client.CacheRole(m.getIndexer(&rbacv1.Role{}), acc, opr); err != nil {
 		return err
 	}
-	if err := client.CacheClusterRole(m.getIndexer(&rbacv1.ClusterRole{}), am, opr); err != nil {
+	if err := client.CacheClusterRole(m.getIndexer(&rbacv1.ClusterRole{}), acc, opr); err != nil {
 		return err
 	}
-	if err := client.CacheRoleBinding(m.getIndexer(&rbacv1.RoleBinding{}), am, opr); err != nil {
+	if err := client.CacheRoleBinding(m.getIndexer(&rbacv1.RoleBinding{}), acc, opr); err != nil {
 		return err
 	}
-	if err := client.CacheClusterRoleBinding(m.getIndexer(&rbacv1.ClusterRoleBinding{}), am, opr); err != nil {
+	if err := client.CacheClusterRoleBinding(m.getIndexer(&rbacv1.ClusterRoleBinding{}), acc, opr); err != nil {
 		return err
 	}
 	return nil
