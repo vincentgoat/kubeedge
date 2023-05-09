@@ -15,8 +15,6 @@ import (
 	"k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/apis/rbac"
-	rbacv1helpers "k8s.io/kubernetes/pkg/apis/rbac/v1"
 	controllerruntime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -492,19 +490,6 @@ func (c *Controller) GetRoleReferenceRules(ctx context.Context, roleRef rbacv1.R
 	}
 }
 
-func convertRules(rules []rbacv1.PolicyRule) []rbac.PolicyRule {
-	var convertedRules []rbac.PolicyRule
-	for _, rule := range rules {
-		var convertedRule rbac.PolicyRule
-		if err := rbacv1helpers.Convert_v1_PolicyRule_To_rbac_PolicyRule(&rule, &convertedRule, nil); err != nil {
-			klog.Errorf("failed to convert policyrule, %v", err)
-			return nil
-		}
-		convertedRules = append(convertedRules, convertedRule)
-	}
-	return convertedRules
-}
-
 func (c *Controller) VisitRulesFor(ctx context.Context, user user.Info, namespace string, acc *policyv1alpha1.ServiceAccountAccess) {
 	crbl := &rbacv1.ClusterRoleBindingList{}
 	if err := c.Client.List(ctx, crbl); err != nil {
@@ -521,10 +506,9 @@ func (c *Controller) VisitRulesFor(ctx context.Context, user user.Info, namespac
 				klog.Errorf("failed to get rules for clusterrolebinding %s, %v", crb.Name, err)
 				return
 			}
-			conventCrb := &rbac.ClusterRoleBinding{}
 			var accessClusterRoleBinding = policyv1alpha1.AccessClusterRoleBinding{
-				ClusterRoleBinding: *conventCrb,
-				Rules:              convertRules(rules),
+				ClusterRoleBinding: crb,
+				Rules:              rules,
 			}
 			acc.Spec.AccessClusterRoleBinding = append(acc.Spec.AccessClusterRoleBinding, accessClusterRoleBinding)
 		}
@@ -546,14 +530,9 @@ func (c *Controller) VisitRulesFor(ctx context.Context, user user.Info, namespac
 					klog.Errorf("failed to get rules for rolebinding %s, %v", roleBinding.Name, err)
 					return
 				}
-				var convertRb = &rbac.RoleBinding{}
-				if err := rbacv1helpers.Convert_v1_RoleBinding_To_rbac_RoleBinding(&roleBinding, convertRb, nil); err != nil {
-					klog.Errorf("failed to convert rolebinding, %v", err)
-					return
-				}
 				var accessRoleBinding = policyv1alpha1.AccessRoleBinding{
-					RoleBinding: *convertRb,
-					Rules:       convertRules(rules),
+					RoleBinding: roleBinding,
+					Rules:       rules,
 				}
 				acc.Spec.AccessRoleBinding = append(acc.Spec.AccessRoleBinding, accessRoleBinding)
 			}

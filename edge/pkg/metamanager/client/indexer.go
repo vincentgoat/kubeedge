@@ -12,8 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/apis/rbac"
-	rbacv1helpers "k8s.io/kubernetes/pkg/apis/rbac/v1"
 
 	"github.com/kubeedge/beehive/pkg/core/model"
 	"github.com/kubeedge/kubeedge/edge/pkg/metamanager/constants"
@@ -24,19 +22,6 @@ type itemsInPolicy struct {
 	itemKey    map[string]interface{}
 	ret        []interface{}
 	targetKind string
-}
-
-func convertV1Rules(rules []rbac.PolicyRule) []rbacv1.PolicyRule {
-	var convertedRules []rbacv1.PolicyRule
-	for _, rule := range rules {
-		var convertedRule rbacv1.PolicyRule
-		if err := rbacv1helpers.Convert_rbac_PolicyRule_To_v1_PolicyRule(&rule, &convertedRule, nil); err != nil {
-			klog.Errorf("failed to convert policy v1rule, %v", err)
-			return nil
-		}
-		convertedRules = append(convertedRules, convertedRule)
-	}
-	return convertedRules
 }
 
 func (r itemsInPolicy) getRoleItems(m interface{}) {
@@ -55,7 +40,7 @@ func (r itemsInPolicy) getRoleItems(m interface{}) {
 					Name:      rb.RoleBinding.RoleRef.Name,
 					Namespace: am.Namespace,
 				},
-				Rules: convertV1Rules(rb.Rules),
+				Rules: rb.Rules,
 			}
 			key, err := cache.MetaNamespaceKeyFunc(tmpRole)
 			if err != nil {
@@ -72,7 +57,7 @@ func (r itemsInPolicy) getRoleItems(m interface{}) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: rb.RoleBinding.RoleRef.Name,
 				},
-				Rules: convertV1Rules(rb.Rules),
+				Rules: rb.Rules,
 			}
 			key, err := cache.MetaNamespaceKeyFunc(tmpClusterRole)
 			if err != nil {
@@ -93,7 +78,7 @@ func (r itemsInPolicy) getRoleItems(m interface{}) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: crb.ClusterRoleBinding.RoleRef.Name,
 			},
-			Rules: convertV1Rules(crb.Rules),
+			Rules: crb.Rules,
 		}
 		key, err := cache.MetaNamespaceKeyFunc(tmpClusterRole)
 		if err != nil {
