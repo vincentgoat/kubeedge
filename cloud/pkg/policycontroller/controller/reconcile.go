@@ -182,7 +182,12 @@ func newSaAccessObject(sa corev1.ServiceAccount) *policyv1alpha1.ServiceAccountA
 			Namespace: sa.GetNamespace(),
 		},
 		Spec: policyv1alpha1.AccessSpec{
-			ServiceAccount: sa,
+			ServiceAccount: corev1.ServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      sa.GetName(),
+					Namespace: sa.GetNamespace(),
+				},
+			},
 		},
 	}
 }
