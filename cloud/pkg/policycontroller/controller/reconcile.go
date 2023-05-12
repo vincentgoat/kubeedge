@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sort"
 
 	corev1 "k8s.io/api/core/v1"
@@ -11,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apiserver/pkg/authentication/serviceaccount"
@@ -204,23 +205,27 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 			}
 		}
 		// create serviceaccountaccess if not exist when pod event triggered
-		saaBytes, err := json.Marshal(newSaAccessObject(corev1.ServiceAccount{
+		unstr, err := runtime.DefaultUnstructuredConverter.ToUnstructured(newSaAccessObject(corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      sa,
 				Namespace: object.GetNamespace(),
 			},
 		}))
 		if err != nil {
-			klog.Errorf("failed to marshal serviceaccountaccess, %v", err)
+			klog.Errorf("failed to convert serviceaccountaccess to unstructured, %v", err)
 			return nil
 		}
-		var unstr unstructured.Unstructured
-		unstr.SetGroupVersionKind(policyv1alpha1.SchemeGroupVersion.WithKind("ServiceAccountAccess"))
-		if err := json.Unmarshal(saaBytes, &unstr.Object); err != nil {
-			klog.Errorf("failed to unmarshal serviceaccountaccess, %v", err)
+		unstrBytes, err := json.Marshal(unstr)
+		if err != nil {
+			klog.Errorf("failed to marshal serviceaccountaccess to json, %v", err)
 			return nil
 		}
-		if err := c.Client.Create(context.Background(), &unstr); err != nil {
+		var decodeUnstr unstructured.Unstructured
+		if err := json.Unmarshal(unstrBytes, &decodeUnstr); err != nil {
+			klog.Errorf("failed to unmarshal serviceaccountaccess to unstructured, %v", err)
+			return nil
+		}
+		if err := c.Client.Create(context.Background(), &decodeUnstr); err != nil {
 			klog.Errorf("failed to create serviceaccountaccess, %v", err)
 			return nil
 		}
