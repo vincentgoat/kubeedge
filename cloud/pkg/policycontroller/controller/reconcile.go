@@ -181,6 +181,10 @@ func (c *Controller) mapRolesFunc(object client.Object) []controllerruntime.Requ
 
 func newSaAccessObject(sa corev1.ServiceAccount) *policyv1alpha1.ServiceAccountAccess {
 	return &policyv1alpha1.ServiceAccountAccess{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ServiceAccountAccess",
+			APIVersion: policyv1alpha1.SchemeGroupVersion.String(),
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      sa.GetName(),
 			Namespace: sa.GetNamespace(),
@@ -218,7 +222,6 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 			return nil
 		}
 		unstr := &unstructured.Unstructured{}
-		unstr.SetGroupVersionKind(policyv1alpha1.SchemeGroupVersion.WithKind("ServiceAccountAccess"))
 		_, _, err := c.Serializer.Decode(saaBytes.Bytes(), nil, unstr)
 		if err != nil {
 			klog.Errorf("failed to decode serviceaccountaccess, %v", err)
