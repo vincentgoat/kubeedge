@@ -215,11 +215,11 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 			return nil
 		}
 		var unstr unstructured.Unstructured
-		if err := json.Unmarshal(saaBytes, &unstr); err != nil {
+		unstr.SetGroupVersionKind(policyv1alpha1.SchemeGroupVersion.WithKind("ServiceAccountAccess"))
+		if err := json.Unmarshal(saaBytes, &unstr.Object); err != nil {
 			klog.Errorf("failed to unmarshal serviceaccountaccess, %v", err)
 			return nil
 		}
-		unstr.SetGroupVersionKind(policyv1alpha1.SchemeGroupVersion.WithKind("ServiceAccountAccess"))
 		if err := c.Client.Create(context.Background(), &unstr); err != nil {
 			klog.Errorf("failed to create serviceaccountaccess, %v", err)
 			return nil
