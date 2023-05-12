@@ -1,8 +1,8 @@
 package controller
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -212,14 +212,14 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 				Namespace: object.GetNamespace(),
 			},
 		})
-		saaBytes, err := json.Marshal(newSaa)
-		if err != nil {
-			klog.Errorf("failed to marshal serviceaccountaccess, %v", err)
+		var saaBytes bytes.Buffer
+		if err := c.Serializer.Encode(newSaa, &saaBytes); err != nil {
+			klog.Errorf("failed to encode serviceaccountaccess, %v", err)
 			return nil
 		}
 		unstr := &unstructured.Unstructured{}
-		unstr.SetGroupVersionKind(policyv1alpha1.SchemeGroupVersion.WithKind("ServiceAccountAccess"))
-		_, _, err = c.Serializer.Decode(saaBytes, nil, unstr)
+		//unstr.SetGroupVersionKind(policyv1alpha1.SchemeGroupVersion.WithKind("ServiceAccountAccess"))
+		_, _, err := c.Serializer.Decode(saaBytes.Bytes(), nil, unstr)
 		if err != nil {
 			klog.Errorf("failed to decode serviceaccountaccess, %v", err)
 			return nil
