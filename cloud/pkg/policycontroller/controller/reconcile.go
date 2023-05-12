@@ -199,16 +199,6 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 				return []controllerruntime.Request{{NamespacedName: client.ObjectKey{Namespace: am.Namespace, Name: am.Name}}}
 			}
 		}
-		// create serviceaccountaccess if not exist when pod event triggered
-		if err := c.Client.Create(context.Background(), newSaAccessObject(corev1.ServiceAccount{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      sa,
-				Namespace: object.GetNamespace(),
-			},
-		})); err != nil {
-			klog.Errorf("failed to create serviceaccountaccess, %v", err)
-			return nil
-		}
 	case *corev1.ServiceAccount:
 		return []controllerruntime.Request{{NamespacedName: client.ObjectKey{Namespace: object.GetNamespace(), Name: object.GetName()}}}
 	}
@@ -219,9 +209,32 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 func (c *Controller) filterObject(ctx context.Context, object client.Object) bool {
 	switch object.(type) {
 	case *corev1.Pod:
-		if object.(*corev1.Pod).Spec.ServiceAccountName != "" && object.(*corev1.Pod).Spec.NodeName != "" {
-			return true
+		if object.(*corev1.Pod).Spec.ServiceAccountName == "" || object.(*corev1.Pod).Spec.NodeName == "" {
+			return false
 		}
+		accList := &policyv1alpha1.ServiceAccountAccessList{}
+		if err := c.Client.List(ctx, accList, &client.ListOptions{Namespace: object.GetNamespace()}); err != nil {
+			klog.Errorf("failed to list serviceaccountaccess, %v", err)
+			return false
+		}
+		sa := object.(*corev1.Pod).Spec.ServiceAccountName
+		for _, am := range accList.Items {
+			if am.Spec.ServiceAccount.Name == sa && am.Spec.ServiceAccount.Namespace == object.GetNamespace() {
+				return true
+			}
+		}
+		// create serviceaccountaccess if not exist when pod event triggered
+		newSaa := newSaAccessObject(corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      sa,
+				Namespace: object.GetNamespace(),
+			},
+		})
+		if err := c.Client.Create(ctx, newSaa); err != nil {
+			klog.Errorf("failed to create serviceaccountaccess, %v", err)
+			return false
+		}
+		return true
 	case *corev1.ServiceAccount:
 		accList := &policyv1alpha1.ServiceAccountAccessList{}
 		if err := c.Client.List(ctx, accList, &client.ListOptions{Namespace: object.GetNamespace()}); err != nil {
