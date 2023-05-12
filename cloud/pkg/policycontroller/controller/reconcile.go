@@ -36,6 +36,7 @@ import (
 
 type Controller struct {
 	client.Client
+	runtime.Serializer
 	MessageLayer messagelayer.MessageLayer
 }
 
@@ -205,27 +206,24 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 			}
 		}
 		// create serviceaccountaccess if not exist when pod event triggered
-		unstr, err := runtime.DefaultUnstructuredConverter.ToUnstructured(newSaAccessObject(corev1.ServiceAccount{
+		newSaa := newSaAccessObject(corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      sa,
 				Namespace: object.GetNamespace(),
 			},
-		}))
+		})
+		saaBytes, err := json.Marshal(newSaa)
 		if err != nil {
-			klog.Errorf("failed to convert serviceaccountaccess to unstructured, %v", err)
+			klog.Errorf("failed to marshal serviceaccountaccess, %v", err)
 			return nil
 		}
-		unstrBytes, err := json.Marshal(unstr)
+		unstr := &unstructured.Unstructured{}
+		_, _, err = c.Serializer.Decode(saaBytes, nil, unstr)
 		if err != nil {
-			klog.Errorf("failed to marshal serviceaccountaccess to json, %v", err)
+			klog.Errorf("failed to decode serviceaccountaccess, %v", err)
 			return nil
 		}
-		var decodeUnstr unstructured.Unstructured
-		if err := json.Unmarshal(unstrBytes, &decodeUnstr); err != nil {
-			klog.Errorf("failed to unmarshal serviceaccountaccess to unstructured, %v", err)
-			return nil
-		}
-		if err := c.Client.Create(context.Background(), &decodeUnstr); err != nil {
+		if err := c.Client.Create(context.Background(), unstr); err != nil {
 			klog.Errorf("failed to create serviceaccountaccess, %v", err)
 			return nil
 		}

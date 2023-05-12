@@ -3,6 +3,7 @@ package policycontroller
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -53,11 +54,14 @@ func NewAccessRoleControllerManager(ctx context.Context, kubeCfg *rest.Config) (
 }
 
 func setupControllers(ctx context.Context, mgr manager.Manager) error {
+	Serializer := json.NewSerializerWithOptions(json.DefaultMetaFactory, accessScheme, accessScheme, json.SerializerOptions{Yaml: false})
+
 	// This returned cli will directly acquire the unstructured objects from API Server which
 	// have not be registered in the accessScheme.
 	cli := mgr.GetClient()
 	pc := &controller.Controller{
 		Client:       cli,
+		Serializer:   Serializer,
 		MessageLayer: messagelayer.PolicyControllerMessageLayer(),
 	}
 
