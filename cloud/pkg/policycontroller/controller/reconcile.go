@@ -218,6 +218,7 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 			return nil
 		}
 		unstr := &unstructured.Unstructured{}
+		unstr.SetGroupVersionKind(policyv1alpha1.SchemeGroupVersion.WithKind("ServiceAccountAccess"))
 		_, _, err = c.Serializer.Decode(saaBytes, nil, unstr)
 		if err != nil {
 			klog.Errorf("failed to decode serviceaccountaccess, %v", err)
