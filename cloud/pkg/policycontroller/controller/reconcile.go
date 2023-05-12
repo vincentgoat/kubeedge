@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"sort"
 
 	corev1 "k8s.io/api/core/v1"
@@ -13,7 +11,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/apiserver/pkg/authentication/user"
@@ -218,7 +218,7 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 			return nil
 		}
 		unstr := &unstructured.Unstructured{}
-		//unstr.SetGroupVersionKind(policyv1alpha1.SchemeGroupVersion.WithKind("ServiceAccountAccess"))
+		unstr.SetGroupVersionKind(policyv1alpha1.SchemeGroupVersion.WithKind("ServiceAccountAccess"))
 		_, _, err := c.Serializer.Decode(saaBytes.Bytes(), nil, unstr)
 		if err != nil {
 			klog.Errorf("failed to decode serviceaccountaccess, %v", err)
