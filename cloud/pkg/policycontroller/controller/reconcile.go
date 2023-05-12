@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"sort"
@@ -11,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -170,7 +168,7 @@ func matchTarget(accList *policyv1alpha1.ServiceAccountAccessList, object client
 
 func (c *Controller) mapRolesFunc(object client.Object) []controllerruntime.Request {
 	accList := &policyv1alpha1.ServiceAccountAccessList{}
-	if err := c.Client.List(context.Background(), accList); err != nil {
+	if err := c.Client.List(context.TODO(), accList); err != nil {
 		klog.Errorf("failed to list serviceaccountaccess, %v", err)
 		return nil
 	}
@@ -197,7 +195,7 @@ func newSaAccessObject(sa corev1.ServiceAccount) *policyv1alpha1.ServiceAccountA
 
 func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Request {
 	accList := &policyv1alpha1.ServiceAccountAccessList{}
-	if err := c.Client.List(context.Background(), accList, &client.ListOptions{Namespace: object.GetNamespace()}); err != nil {
+	if err := c.Client.List(context.TODO(), accList, &client.ListOptions{Namespace: object.GetNamespace()}); err != nil {
 		klog.Errorf("failed to list serviceaccountaccess, %v", err)
 		return nil
 	}
@@ -208,28 +206,6 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 			if am.Spec.ServiceAccount.Name == sa && am.Spec.ServiceAccount.Namespace == object.GetNamespace() {
 				return []controllerruntime.Request{{NamespacedName: client.ObjectKey{Namespace: am.Namespace, Name: am.Name}}}
 			}
-		}
-		// create serviceaccountaccess if not exist when pod event triggered
-		newSaa := newSaAccessObject(corev1.ServiceAccount{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      sa,
-				Namespace: object.GetNamespace(),
-			},
-		})
-		var saaBytes bytes.Buffer
-		if err := c.Serializer.Encode(newSaa, &saaBytes); err != nil {
-			klog.Errorf("failed to encode serviceaccountaccess, %v", err)
-			return nil
-		}
-		unstr := &unstructured.Unstructured{}
-		_, _, err := c.Serializer.Decode(saaBytes.Bytes(), nil, unstr)
-		if err != nil {
-			klog.Errorf("failed to decode serviceaccountaccess, %v", err)
-			return nil
-		}
-		if err := c.Client.Create(context.Background(), unstr); err != nil {
-			klog.Errorf("failed to create serviceaccountaccess, %v", err)
-			return nil
 		}
 
 	case *corev1.ServiceAccount:
@@ -242,9 +218,32 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 func (c *Controller) filterObject(ctx context.Context, object client.Object) bool {
 	switch object.(type) {
 	case *corev1.Pod:
-		if object.(*corev1.Pod).Spec.ServiceAccountName != "" && object.(*corev1.Pod).Spec.NodeName != "" {
-			return true
+		if object.(*corev1.Pod).Spec.ServiceAccountName == "" || object.(*corev1.Pod).Spec.NodeName == "" {
+			return false
 		}
+		accList := &policyv1alpha1.ServiceAccountAccessList{}
+		if err := c.Client.List(ctx, accList, &client.ListOptions{Namespace: object.GetNamespace()}); err != nil {
+			klog.Errorf("failed to list serviceaccountaccess, %v", err)
+			return false
+		}
+		sa := object.(*corev1.Pod).Spec.ServiceAccountName
+		for _, am := range accList.Items {
+			if am.Spec.ServiceAccount.Name == sa && am.Spec.ServiceAccount.Namespace == object.GetNamespace() {
+				return true
+			}
+		}
+		// create serviceaccountaccess if not exist when pod event triggered
+		newSaa := newSaAccessObject(corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      sa,
+				Namespace: object.GetNamespace(),
+			},
+		})
+		if err := c.Client.Create(ctx, newSaa); err != nil {
+			klog.Errorf("failed to create serviceaccountaccess, %v", err)
+			return false
+		}
+		return true
 	case *corev1.ServiceAccount:
 		accList := &policyv1alpha1.ServiceAccountAccessList{}
 		if err := c.Client.List(ctx, accList, &client.ListOptions{Namespace: object.GetNamespace()}); err != nil {
@@ -513,19 +512,6 @@ func (c *Controller) GetRoleReferenceRules(ctx context.Context, roleRef rbacv1.R
 	}
 }
 
-func convertRules(rules []rbacv1.PolicyRule) []rbac.PolicyRule {
-	var convertedRules []rbac.PolicyRule
-	for _, rule := range rules {
-		var convertedRule rbac.PolicyRule
-		if err := rbacv1helpers.Convert_v1_PolicyRule_To_rbac_PolicyRule(&rule, &convertedRule, nil); err != nil {
-			klog.Errorf("failed to convert policyrule, %v", err)
-			return nil
-		}
-		convertedRules = append(convertedRules, convertedRule)
-	}
-	return convertedRules
-}
-
 func (c *Controller) VisitRulesFor(ctx context.Context, user user.Info, namespace string, acc *policyv1alpha1.ServiceAccountAccess) {
 	crbl := &rbacv1.ClusterRoleBindingList{}
 	if err := c.Client.List(ctx, crbl); err != nil {
@@ -545,7 +531,7 @@ func (c *Controller) VisitRulesFor(ctx context.Context, user user.Info, namespac
 			conventCrb := &rbac.ClusterRoleBinding{}
 			var accessClusterRoleBinding = policyv1alpha1.AccessClusterRoleBinding{
 				ClusterRoleBinding: *conventCrb,
-				Rules:              convertRules(rules),
+				Rules:              rules,
 			}
 			acc.Spec.AccessClusterRoleBinding = append(acc.Spec.AccessClusterRoleBinding, accessClusterRoleBinding)
 		}
