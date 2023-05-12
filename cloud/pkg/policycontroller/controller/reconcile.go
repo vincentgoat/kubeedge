@@ -10,7 +10,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/fields"
+	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/apiserver/pkg/authentication/user"
@@ -202,15 +204,26 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 			}
 		}
 		// create serviceaccountaccess if not exist when pod event triggered
-		if err := c.Client.Create(context.Background(), newSaAccessObject(corev1.ServiceAccount{
+		saaBytes, err := apiruntime.Encode(unstructured.UnstructuredJSONScheme, newSaAccessObject(corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      sa,
 				Namespace: object.GetNamespace(),
 			},
-		})); err != nil {
+		}))
+		if err != nil {
+			klog.Errorf("failed to encode serviceaccountaccess, %v", err)
+			return nil
+		}
+		var unstr unstructured.Unstructured
+		if err := apiruntime.DecodeInto(unstructured.UnstructuredJSONScheme, saaBytes, &unstr); err != nil {
+			klog.Errorf("failed to decode serviceaccountaccess, %v", err)
+			return nil
+		}
+		if err := c.Client.Create(context.Background(), &unstr); err != nil {
 			klog.Errorf("failed to create serviceaccountaccess, %v", err)
 			return nil
 		}
+
 	case *corev1.ServiceAccount:
 		return []controllerruntime.Request{{NamespacedName: client.ObjectKey{Namespace: object.GetNamespace(), Name: object.GetName()}}}
 	}
