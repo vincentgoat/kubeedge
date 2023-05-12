@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 
@@ -12,7 +13,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/fields"
-	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/apiserver/pkg/authentication/user"
@@ -204,21 +204,22 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 			}
 		}
 		// create serviceaccountaccess if not exist when pod event triggered
-		saaBytes, err := apiruntime.Encode(unstructured.UnstructuredJSONScheme, newSaAccessObject(corev1.ServiceAccount{
+		saaBytes, err := json.Marshal(newSaAccessObject(corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      sa,
 				Namespace: object.GetNamespace(),
 			},
 		}))
 		if err != nil {
-			klog.Errorf("failed to encode serviceaccountaccess, %v", err)
+			klog.Errorf("failed to marshal serviceaccountaccess, %v", err)
 			return nil
 		}
 		var unstr unstructured.Unstructured
-		if err := apiruntime.DecodeInto(unstructured.UnstructuredJSONScheme, saaBytes, &unstr); err != nil {
-			klog.Errorf("failed to decode serviceaccountaccess, %v", err)
+		if err := json.Unmarshal(saaBytes, &unstr); err != nil {
+			klog.Errorf("failed to unmarshal serviceaccountaccess, %v", err)
 			return nil
 		}
+		unstr.SetGroupVersionKind(policyv1alpha1.SchemeGroupVersion.WithKind("ServiceAccountAccess"))
 		if err := c.Client.Create(context.Background(), &unstr); err != nil {
 			klog.Errorf("failed to create serviceaccountaccess, %v", err)
 			return nil
