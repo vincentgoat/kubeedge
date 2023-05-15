@@ -11,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/apiserver/pkg/authentication/user"
@@ -26,6 +27,7 @@ import (
 	"github.com/kubeedge/kubeedge/cloud/pkg/common/messagelayer"
 	"github.com/kubeedge/kubeedge/cloud/pkg/common/modules"
 	"github.com/kubeedge/kubeedge/cloud/pkg/edgecontroller/constants"
+	commonconstants "github.com/kubeedge/kubeedge/common/constants"
 	policyv1alpha1 "github.com/kubeedge/kubeedge/pkg/apis/policy/v1alpha1"
 )
 
@@ -199,6 +201,19 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 				return []controllerruntime.Request{{NamespacedName: client.ObjectKey{Namespace: am.Namespace, Name: am.Name}}}
 			}
 		}
+		// create serviceaccountaccess if not exist when pod event triggered
+		newSaa := newSaAccessObject(corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      sa,
+				Namespace: object.GetNamespace(),
+			},
+		})
+		if err := c.Client.Create(context.Background(), newSaa); err != nil {
+			klog.Errorf("failed to create serviceaccountaccess, %v", err)
+			return nil
+		}
+		// return empty request to avoid reconcile conflict with serviceaccountaccess resource
+		return []controllerruntime.Request{}
 	case *corev1.ServiceAccount:
 		return []controllerruntime.Request{{NamespacedName: client.ObjectKey{Namespace: object.GetNamespace(), Name: object.GetName()}}}
 	}
@@ -209,29 +224,8 @@ func (c *Controller) mapObjectFunc(object client.Object) []controllerruntime.Req
 func (c *Controller) filterObject(ctx context.Context, object client.Object) bool {
 	switch object.(type) {
 	case *corev1.Pod:
-		if object.(*corev1.Pod).Spec.ServiceAccountName == "" || object.(*corev1.Pod).Spec.NodeName == "" {
-			return false
-		}
-		accList := &policyv1alpha1.ServiceAccountAccessList{}
-		if err := c.Client.List(ctx, accList, &client.ListOptions{Namespace: object.GetNamespace()}); err != nil {
-			klog.Errorf("failed to list serviceaccountaccess, %v", err)
-			return false
-		}
-		sa := object.(*corev1.Pod).Spec.ServiceAccountName
-		for _, am := range accList.Items {
-			if am.Spec.ServiceAccount.Name == sa && am.Spec.ServiceAccount.Namespace == object.GetNamespace() {
-				return true
-			}
-		}
-		// create serviceaccountaccess if not exist when pod event triggered
-		newSaa := newSaAccessObject(corev1.ServiceAccount{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      sa,
-				Namespace: object.GetNamespace(),
-			},
-		})
-		if err := c.Client.Create(ctx, newSaa); err != nil {
-			klog.Errorf("failed to create serviceaccountaccess, %v", err)
+		node := object.(*corev1.Pod).Spec.NodeName
+		if object.(*corev1.Pod).Spec.ServiceAccountName == "" || node == "" || !isEdgeNode(ctx, c.Client, node) {
 			return false
 		}
 		return true
@@ -281,21 +275,40 @@ func (c *Controller) SetupWithManager(ctx context.Context, mgr controllerruntime
 		Complete(c)
 }
 
+func isEdgeNode(ctx context.Context, cli client.Client, name string) bool {
+	set := labels.Set{commonconstants.EdgeNodeRoleKey: commonconstants.EdgeNodeRoleValue}
+	selector := labels.SelectorFromSet(set)
+	var edgeNodeList = &corev1.NodeList{}
+	if err := cli.List(ctx, edgeNodeList, &client.ListOptions{LabelSelector: selector}); err != nil {
+		klog.Errorf("failed to list edge nodes, %v", err)
+		return false
+	}
+	for _, node := range edgeNodeList.Items {
+		if node.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func getNodeListOfServiceAccountAccess(ctx context.Context, cli client.Client, acc *policyv1alpha1.ServiceAccountAccess) ([]string, error) {
 	var nodeList []string
 	podList := &corev1.PodList{}
 	saNameSelector := fields.OneTermEqualSelector("spec.serviceAccountName", acc.Spec.ServiceAccount.Name)
-	allSelectors := fields.AndSelectors(saNameSelector, fields.OneTermEqualSelector("metadata.namespace", acc.Namespace))
-	if err := cli.List(ctx, podList, client.MatchingFieldsSelector{Selector: allSelectors}); err != nil {
+	if err := cli.List(ctx, podList, client.MatchingFieldsSelector{Selector: saNameSelector}, &client.ListOptions{Namespace: acc.Namespace}); err != nil {
 		klog.Errorf("failed to list pods through field selector serviceAccountName, %v", err)
 		return nil, err
 	}
+
 	var nodeMap = make(map[string]bool)
 	for _, pod := range podList.Items {
 		if pod.Spec.NodeName == "" {
 			continue
 		}
 		if nodeMap[pod.Spec.NodeName] {
+			continue
+		}
+		if !isEdgeNode(ctx, cli, pod.Spec.NodeName) {
 			continue
 		}
 		nodeMap[pod.Spec.NodeName] = true
@@ -335,7 +348,7 @@ func subtractSlice(source, subTarget []string) []string {
 func (c *Controller) send2Edge(acc *policyv1alpha1.ServiceAccountAccess, targets []string, opr string) {
 	sendObj := *acc.DeepCopy()
 	for _, node := range targets {
-		resource, err := messagelayer.BuildResource(node, sendObj.Namespace, model.ResourceTypeAccessRoleMixer, sendObj.Name)
+		resource, err := messagelayer.BuildResource(node, sendObj.Namespace, model.ResourceTypeSaAccess, sendObj.Name)
 		if err != nil {
 			klog.Warningf("built message resource failed with error: %s", err)
 			continue
@@ -344,7 +357,7 @@ func (c *Controller) send2Edge(acc *policyv1alpha1.ServiceAccountAccess, targets
 		sendObj.Status.NodeList = []string{}
 		msg := model.NewMessage("").
 			SetResourceVersion(sendObj.ResourceVersion).
-			FillBody(sendObj).BuildRouter(modules.PolicyControllerModuleName, constants.GroupResource, resource, opr)
+			FillBody(&sendObj).BuildRouter(modules.PolicyControllerModuleName, constants.GroupResource, resource, opr)
 		if err := c.MessageLayer.Send(*msg); err != nil {
 			klog.Warningf("send message %s failed with error: %s", resource, err)
 			continue

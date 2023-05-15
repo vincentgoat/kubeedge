@@ -683,7 +683,26 @@ func TestFilterResource(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to unmarshal podNoSa: %v", err)
 	}
-
+	nodeList := &v1.NodeList{
+		Items: []v1.Node{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "my-node",
+					Labels: map[string]string{
+						"node-role.kubernetes.io/edge": "",
+					},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-2",
+					Labels: map[string]string{
+						"node-role.kubernetes.io/edge": "",
+					},
+				},
+			},
+		},
+	}
 	var tests = []struct {
 		name            string
 		input           *policyv1alpha1.ServiceAccountAccess
@@ -1034,8 +1053,11 @@ func TestFilterResource(t *testing.T) {
 	if err := policyv1alpha1.AddToScheme(accessScheme); err != nil {
 		t.Errorf("Failed to add access scheme: %v", err)
 	}
+	if err := v1.AddToScheme(accessScheme); err != nil {
+		t.Errorf("Failed to add access scheme: %v", err)
+	}
 	for _, tc := range tests {
-		fakeClient := fake.NewClientBuilder().WithScheme(accessScheme).WithObjects(tc.input).Build()
+		fakeClient := fake.NewClientBuilder().WithScheme(accessScheme).WithObjects(tc.input).WithLists(nodeList).Build()
 		ctr := &Controller{
 			Client: fakeClient,
 		}
@@ -1052,7 +1074,7 @@ func TestFilterResource(t *testing.T) {
 		if tc.obj != nil {
 			got1 := ctr.filterObject(context.Background(), tc.obj)
 			if !reflect.DeepEqual(got1, tc.objResult) {
-				t.Errorf("case %q want=%v, got=%v", tc.name, tc.rbacResult, got1)
+				t.Errorf("case %q want=%v, got=%v", tc.name, tc.objResult, got1)
 			}
 		}
 	}
@@ -1318,6 +1340,27 @@ func TestGetNodeListOfServiceAccountAccess(t *testing.T) {
 		},
 	}
 
+	nodeList := &v1.NodeList{
+		Items: []v1.Node{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-1",
+					Labels: map[string]string{
+						"node-role.kubernetes.io/edge": "",
+					},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-2",
+					Labels: map[string]string{
+						"node-role.kubernetes.io/edge": "",
+					},
+				},
+			},
+		},
+	}
+
 	// Create a sample PodList object with two pods on different nodes
 	podList := &v1.PodList{
 		Items: []v1.Pod{
@@ -1378,7 +1421,7 @@ func TestGetNodeListOfServiceAccountAccess(t *testing.T) {
 	if !equality.Semantic.DeepEqual(got, []string{}) {
 		t.Errorf("testcase 1 got %v, want %v", got, []string{})
 	}
-	fakeClient2 := withScheme.WithObjects(&podList.Items[0]).Build()
+	fakeClient2 := withScheme.WithObjects(&podList.Items[0]).WithLists(nodeList).Build()
 	got2, err := getNodeListOfServiceAccountAccess(context.Background(), fakeClient2, saa)
 	if err != nil {
 		t.Errorf("fakeClient2 get node list error = %v", err)
@@ -1451,6 +1494,39 @@ func TestSyncRules(t *testing.T) {
 	err = json.Unmarshal([]byte(roleStr2), &role2)
 	if err != nil {
 		t.Errorf("Failed to unmarshal role1: %v", err)
+	}
+	nodeList := &v1.NodeList{
+		Items: []v1.Node{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "my-node",
+					Labels: map[string]string{
+						"node-role.kubernetes.io/edge": "",
+					},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "my-node-2",
+					Labels: map[string]string{
+						"node-role.kubernetes.io/edge": "",
+					},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "my-node-3",
+					Labels: map[string]string{
+						"node-role.kubernetes.io/edge": "",
+					},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "my-node-4",
+				},
+			},
+		},
 	}
 	var nodeStatus1 = policyv1alpha1.AccessStatus{NodeList: []string{"my-node"}}
 	var nodeStatus2 = policyv1alpha1.AccessStatus{NodeList: []string{"my-node", "my-node-2"}}
@@ -1724,7 +1800,7 @@ func TestSyncRules(t *testing.T) {
 			if err := rbacv1.AddToScheme(accessScheme); err != nil {
 				t.Errorf("Failed to add rbacv1 scheme: %v", err)
 			}
-			fakeClient := fake.NewClientBuilder().WithScheme(accessScheme).WithObjects(tt.obj...).Build()
+			fakeClient := fake.NewClientBuilder().WithScheme(accessScheme).WithObjects(tt.obj...).WithLists(nodeList).Build()
 			ctr := &Controller{
 				Client:       fakeClient,
 				MessageLayer: messagelayer.PolicyControllerMessageLayer(),

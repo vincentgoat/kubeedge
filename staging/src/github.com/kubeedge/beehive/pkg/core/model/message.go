@@ -35,7 +35,7 @@ const (
 	ResourceTypeRuleEndpoint        = "ruleendpoint"
 	ResourceTypeRuleStatus          = "rulestatus"
 	ResourceTypeLease               = "lease"
-	ResourceTypeAccessRoleMixer     = "accessrolemixer"
+	ResourceTypeSaAccess            = "serviceaccountaccess"
 )
 
 // Message struct

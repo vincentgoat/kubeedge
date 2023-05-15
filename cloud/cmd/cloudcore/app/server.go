@@ -163,7 +163,7 @@ func registerModules(c *v1alpha1.CloudCoreConfig) {
 	cloudstream.Register(c.Modules.CloudStream, c.CommonConfig)
 	router.Register(c.Modules.Router)
 	dynamiccontroller.Register(c.Modules.DynamicController)
-	policycontroller.Register(client.KubeConfig)
+	policycontroller.Register(client.CrdConfig)
 }
 
 func NegotiateTunnelPort() (*int, error) {
