@@ -2,7 +2,6 @@ package client
 
 import (
 	"fmt"
-	"reflect"
 	"sync"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
@@ -10,6 +9,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -227,7 +227,7 @@ func CacheClusterRoleBinding(crbIndexer cache.Indexer, acc *policyv1alpha1.Servi
 }
 
 type CacheManager struct {
-	Indexers map[reflect.Type]cache.Indexer
+	Indexers map[schema.GroupVersionKind]cache.Indexer
 	mux      sync.RWMutex
 }
 
@@ -257,15 +257,16 @@ func indexKeyFunc(obj interface{}) (string, error) {
 func (c *CacheManager) GetObjIndexer(obj runtime.Object) (cache.Indexer, error) {
 	c.mux.RLock()
 	defer c.mux.RUnlock()
-	informerType := reflect.TypeOf(obj)
-	if _, ok := c.Indexers[informerType]; ok {
-		return c.Indexers[informerType], nil
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	if _, ok := c.Indexers[gvk]; ok {
+		return c.Indexers[gvk], nil
 	}
 	return nil, fmt.Errorf("indexer not found")
 }
 
 func newIndexer(obj interface{}) cache.Indexer {
 	indexer := cache.NewIndexer(indexKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+
 	if _, ok := obj.(*authenticationv1.TokenRequest); !ok {
 		return indexer
 	}
@@ -287,9 +288,9 @@ func newIndexer(obj interface{}) cache.Indexer {
 func (c *CacheManager) NewIndexer(obj runtime.Object) cache.Indexer {
 	c.mux.Lock()
 	defer c.mux.Unlock()
-	informerType := reflect.TypeOf(obj)
-	c.Indexers[informerType] = newIndexer(obj)
-	return c.Indexers[informerType]
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	c.Indexers[gvk] = newIndexer(obj)
+	return c.Indexers[gvk]
 }
 
 func GetOrCreateIndexer(cache *CacheManager, obj runtime.Object) cache.Indexer {

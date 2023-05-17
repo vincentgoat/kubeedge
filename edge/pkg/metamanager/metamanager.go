@@ -1,11 +1,10 @@
 package metamanager
 
 import (
-	"reflect"
-
 	"github.com/astaxie/beego/orm"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -31,7 +30,7 @@ type metaManager struct {
 var cacheManager *client.CacheManager
 
 func init() {
-	cacheManager = &client.CacheManager{Indexers: make(map[reflect.Type]cache.Indexer)}
+	cacheManager = &client.CacheManager{Indexers: make(map[schema.GroupVersionKind]cache.Indexer)}
 }
 
 var _ core.Module = (*metaManager)(nil)

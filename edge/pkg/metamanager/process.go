@@ -3,6 +3,8 @@ package metamanager
 import (
 	"encoding/json"
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"strings"
 	"time"
 
@@ -214,25 +216,32 @@ func handleRuntimeObj(indexer cache.Indexer, message *model.Message, obj interfa
 }
 
 func (m *metaManager) handleMessage(message *model.Message) error {
-	obj := message.GetContent()
-	objRsp, ok := obj.(*commontypes.ObjectResp)
-	if ok {
-		if objRsp.Err != nil {
+	contentData, err := message.GetContentData()
+	if err != nil {
+		klog.Errorf("get message content data failed, message: %s, error: %s", msgDebugInfo(message), err)
+		return fmt.Errorf("get message content data failed, error: %s", err)
+	}
+	var rspObj commontypes.ObjectResp
+	var obj metav1.Object
+	if err = json.Unmarshal(contentData, &rspObj); err == nil {
+		if rspObj.Err != nil {
 			return nil
 		}
-		obj = objRsp.Object
-	}
-	var runtimeObj runtime.Object
-	if runtimeObj, ok = obj.(runtime.Object); !ok {
-		return handleCustomizedMessage(message)
-	}
-	_, ok = obj.(*policyv1alpha1.ServiceAccountAccess)
-	if ok {
-		if err := m.handleMixerResource(message); err != nil {
-			klog.Errorf("handle mixer resource failed: %v", err)
-			return fmt.Errorf("handle mixer resource failed: %v", err)
+		obj = rspObj.Object
+
+		klog.Errorf("====commontypes.ObjectResp: %+v", rspObj)
+	} else {
+		unstr := new(unstructured.Unstructured)
+		err = runtime.DecodeInto(unstructured.UnstructuredJSONScheme, contentData, unstr)
+		if err != nil {
+			klog.Errorf("====customization message: %+v", message)
+			return handleCustomizedMessage(message)
 		}
-		// won't return here, continue to handle mixer resource
+		obj = unstr
+		if unstr.GetObjectKind().GroupVersionKind().String() == "policy.kubeedge.io/v1alpha1, Kind=ServiceAccountAccess" {
+			klog.Errorf("====handleMixerResource: %+v", unstr)
+			return m.handleMixerResource(message)
+		}
 	}
 	indexer := m.getIndexer(runtimeObj)
 	return handleRuntimeObj(indexer, message, runtimeObj)
@@ -371,7 +380,7 @@ func (m *metaManager) processDelete(message model.Message) {
 	imitator.DefaultV2Client.Inject(message)
 	_, resType, _ := parseResource(&message)
 	if resType == model.ResourceTypePod && message.GetSource() == modules.EdgedModuleName {
-		deletePodRemote(m, message)
+		sendToCloud(&message)
 		return
 	}
 
